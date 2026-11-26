@@ -24,14 +24,13 @@ document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML=icon(e.dataset.i
 
 
 // Profile display only. Launch data is not a verified login session.
-let shownProfileKey='', photoStatus='Не проверено', photoAttempt=0;
+
+let shownProfileKey='', photoAttempt=0;
+const sessionPhotos=new Map();
 function getBridge(){
   return window.Fluxogram?.WebApp || window.FluxoGram?.WebApp || window.Telegram?.WebApp || null;
 }
-function updatePhotoStatus(value){
-  photoStatus=value;
-  const el=$('photoStatus'); if(el)el.textContent=value;
-}
+
 function getLaunchUser(){
   const bridge=getBridge();
   let u=bridge?.initDataUnsafe?.user,raw=null;
@@ -49,78 +48,74 @@ function getLaunchUser(){
   try{const url=new URL(supplied);if(url.protocol==='https:'&&!url.username&&!url.password)photo=url.href}catch{}
   return {id:String(u.id),name,handle:text(u.username),photo,photoPresent:!!supplied};
 }
-function localPhotoKey(u){return 'markt-local-photo-v15:'+u.id}
+
+function localPhotoKey(u){return 'markt-local-photo-v15:'+(u?.id||'guest')}
 function readLocalPhoto(u){
-  if(!u)return '';
-  try{const v=localStorage.getItem(localPhotoKey(u))||'';return /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(v)?v:''}catch{return ''}
+  const key=localPhotoKey(u);
+  try{const v=sessionPhotos.has(key)?sessionPhotos.get(key):localStorage.getItem(key)||'';return /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(v)?v:''}catch{return sessionPhotos.get(key)||''}
 }
 function renderProfile(force=false){
-  const u=getLaunchUser(),local=readLocalPhoto(u);
-  const key=JSON.stringify([u,local]);
+  const u=getLaunchUser(),local=readLocalPhoto(u),key=JSON.stringify([u,local]);
   if(key===shownProfileKey && force!==true)return;
   shownProfileKey=key;
   const attempt=++photoAttempt;
   $('nickname').textContent=u?.name||'Гость';
-  $('profileStatus').textContent=u?(u.handle?'@'+u.handle:'Профиль FluxoGram'):'Открой через бота';
-  document.querySelector('#profile .head p').textContent=u?'Профиль из Mini App · данные не проверены сервером':'Данные аккаунта пока недоступны';
+  $('profileStatus').textContent=u?.handle?'@'+u.handle:'';
+  $('profileStatus').hidden=!u?.handle;
   $('localPhotoRemove').hidden=!local;
-  $('localPhotoInput').disabled=!u;
-  const label=Array.from(u?.name||'MARKT')[0].toUpperCase();
+  const letter=Array.from(u?.name||'MARKT')[0].toUpperCase();
   const slots=['avatar','navAvatar'].map(id=>$(id));
-  slots.forEach(el=>{el.textContent=label});
-  const missing=!u?'Данные профиля отсутствуют':!u.photoPresent?'FluxoGram не передал фото':!u.photo?'Адрес фото недоступен':'Фото не загрузилось';
-  function load(src,isLocal){
-    if(!src){updatePhotoStatus(missing);return}
-    updatePhotoStatus(isLocal?'Локальное фото · загрузка':'Загрузка фотографии…');
+  slots.forEach(el=>{el.textContent=letter});
+  function load(src,fallback){
+    if(!src)return;
     const pic=new Image();pic.referrerPolicy='no-referrer';pic.alt='';pic.className='profile-photo';
     let settled=false;
-    const fail=()=>{
-      if(settled)return;settled=true;clearTimeout(timeout);
-      if(attempt!==photoAttempt)return;
-      if(!isLocal&&local)load(local,true);else updatePhotoStatus(isLocal?'Локальное фото не загрузилось':missing);
-    };
+    const fail=()=>{if(settled)return;settled=true;clearTimeout(timeout);if(attempt===photoAttempt&&fallback)load(fallback,'')};
     const timeout=setTimeout(fail,8000);
-    pic.onload=()=>{
-      if(settled)return;settled=true;clearTimeout(timeout);
-      if(attempt!==photoAttempt)return;
-      for(const el of slots){el.textContent='';el.appendChild(pic.cloneNode())}
-      updatePhotoStatus(isLocal?'Локальное фото · не синхронизировано':'Фото FluxoGram загружено');
-    };
+    pic.onload=()=>{if(settled)return;settled=true;clearTimeout(timeout);if(attempt!==photoAttempt)return;for(const el of slots){el.textContent='';el.appendChild(pic.cloneNode())}};
     pic.onerror=fail;pic.src=src;
   }
-  if(u?.photo)load(u.photo,false);else if(local)load(local,true);else updatePhotoStatus(missing);
+  if(local)load(local,u?.photo);else if(u?.photo)load(u.photo,'');
 }
 $('localPhotoInput').addEventListener('change',async e=>{
-  const input=e.target,file=input.files?.[0],u=getLaunchUser();
+  const input=e.target,file=input.files?.[0],u=getLaunchUser(),key=localPhotoKey(u);
   input.value='';
-  if(!file||!u)return;
-  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){toast('Выбери PNG, JPEG или WebP до 10 МБ');return}
+  if(!file)return;
+  if((file.type&&!file.type.startsWith('image/'))||file.size>20*1024*1024){toast('Выбери изображение до 20 МБ');return}
   const url=URL.createObjectURL(file);
   try{
     const img=new Image();
     await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url});
     if(!img.naturalWidth||!img.naturalHeight)throw Error('image');
-    const c=document.createElement('canvas');c.width=c.height=256;
-    const side=Math.min(img.naturalWidth,img.naturalHeight);
-    c.getContext('2d').drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,256,256);
-    if(getLaunchUser()?.id!==u.id)return;
-    localStorage.setItem(localPhotoKey(u),c.toDataURL('image/jpeg',.88));
-    renderProfile(true);toast('Фото сохранено на устройстве');
-  }catch{toast('Не удалось сохранить фото')}finally{URL.revokeObjectURL(url)}
+    const c=document.createElement('canvas');c.width=c.height=384;
+    const side=Math.min(img.naturalWidth,img.naturalHeight),cx=c.getContext('2d');
+    cx.fillStyle='#232323';cx.fillRect(0,0,384,384);
+    cx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,384,384);
+    if(localPhotoKey(getLaunchUser())!==key)return;
+    const data=c.toDataURL('image/jpeg',.86);
+    sessionPhotos.set(key,data);
+    let persisted=true;try{localStorage.setItem(key,data)}catch{persisted=false}
+    renderProfile(true);toast(persisted?'Аватар сохранён':'Аватар установлен на время сеанса');
+  }catch{toast('Не удалось открыть фото. Попробуй JPEG или PNG.')}finally{URL.revokeObjectURL(url)}
 });
 $('localPhotoRemove').onclick=()=>{
-  const u=getLaunchUser();if(!u)return;
-  try{localStorage.removeItem(localPhotoKey(u))}catch{}
-  renderProfile(true);
+  const key=localPhotoKey(getLaunchUser());sessionPhotos.set(key,'');
+  try{localStorage.removeItem(key)}catch{}
+  renderProfile(true);toast('Аватар удалён');
 };
-// Normal host window only. Use the real visible height instead of 100dvh.
-let screenBridge=null;
+// No fullscreen or expand. Use host viewport when available and a normal layout fallback.
+let screenBridge=null,layoutFrame=0;
 function screenLayout(){
-  const b=getBridge(), vv=window.visualViewport;
-  const candidates=[vv?.height,window.innerHeight,document.documentElement.clientHeight].filter(v=>Number.isFinite(v)&&v>0);
-  if(candidates.length)document.documentElement.style.setProperty('--markt-visible-height',Math.floor(Math.min(...candidates))+'px');
-  const version=$('webappVersion');
-  if(version)version.textContent=typeof b?.version==='string'&&/^\d+(\.\d+)*$/.test(b.version)?b.version:'Не сообщена';
+  if(layoutFrame)return;
+  layoutFrame=requestAnimationFrame(()=>{
+    layoutFrame=0;
+    const b=getBridge(), vv=window.visualViewport;
+    const values=[vv?.height,window.innerHeight,document.documentElement.clientHeight,b?.viewportHeight].filter(v=>Number.isFinite(v)&&v>=120);
+    if(values.length){
+      const height=Math.floor(Math.min(...values));
+      document.documentElement.style.setProperty('--markt-app-height',height+'px');
+    }
+  });
 }
 function initMiniApp(){
   const b=getBridge();
@@ -132,7 +127,6 @@ function initMiniApp(){
   }
   screenLayout();renderProfile();
 }
-
 const defaults=()=>({stars:0,day:'',saved:[],owned:[],best:0,played:0,history:[],motion:true,giftMotion:true,respectSystemMotion:false,vibration:false,rounded:false});
 let state=defaults();try{let v=JSON.parse(localStorage.getItem('markt-v11')||localStorage.getItem('fluxomarket-v2')||'null');if(v&&typeof v==='object')state={...state,...v};for(const k of ['saved','owned','history'])if(!Array.isArray(state[k]))state[k]=[];for(const k of ['stars','best','played'])if(!Number.isFinite(state[k])||state[k]<0)state[k]=0;delete state.name}catch{}
 if(state.motionVersion!==10){state.motion=true;state.giftMotion=true;state.motionVersion=10;try{localStorage.setItem('markt-v11',JSON.stringify(state))}catch{}}
@@ -176,11 +170,11 @@ function go(id){
 }
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>go(b.dataset.page));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
 let closeT,openFrame,previousFocus,drag=null,closeComplete=null;const overlay=$('overlay'),sheet=$('sheet');
-function showSheet(title,content,foot=''){clearTimeout(closeT);closeComplete=null;cancelAnimationFrame(openFrame);drag=null;sheet.classList.remove('dragging');sheet.style.transform='';overlay.style.backgroundColor='';overlay.classList.remove('closing');previousFocus=overlay.hidden?document.activeElement:previousFocus;$('sheetTitle').textContent=title;$('sheetBody').innerHTML=content;$('sheetFoot').innerHTML=foot;$('sheetFoot').hidden=!foot;$('sheetBody').scrollTop=0;overlay.hidden=false;document.body.style.overflow='hidden';if(!overlay.classList.contains('open')){void overlay.offsetHeight;overlay.classList.add('open')}openFrame=requestAnimationFrame(()=>$('closeSheet').focus({preventScroll:true}))}
+function showSheet(title,content,foot=''){clearTimeout(closeT);closeComplete=null;cancelAnimationFrame(openFrame);drag=null;sheet.classList.remove('dragging');sheet.style.transform='';overlay.style.backgroundColor='';overlay.classList.remove('closing');previousFocus=overlay.hidden?document.activeElement:previousFocus;$('sheetTitle').textContent=title;$('sheetBody').innerHTML=content;$('sheetFoot').innerHTML=foot;$('sheetFoot').hidden=!foot;$('sheetBody').scrollTop=0;overlay.hidden=false;document.querySelector('main').classList.add('sheet-open');if(!overlay.classList.contains('open')){void overlay.offsetHeight;overlay.classList.add('open')}openFrame=requestAnimationFrame(()=>$('closeSheet').focus({preventScroll:true}))}
 function closeSheet(){if(overlay.hidden||overlay.classList.contains('closing'))return;
  drag=null;sheet.classList.remove('dragging');void sheet.offsetHeight;
  overlay.classList.add('closing');overlay.classList.remove('open');sheet.style.transform='translate3d(0,110%,0)';overlay.style.backgroundColor='';
- const complete=()=>{if(!overlay.classList.contains('closing'))return;closeComplete=null;clearTimeout(closeT);overlay.hidden=true;overlay.classList.remove('closing');sheet.style.transform='';document.body.style.overflow='';if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true})};closeComplete=complete;closeT=setTimeout(complete,motionEnabled()?510:0)
+ const complete=()=>{if(!overlay.classList.contains('closing'))return;closeComplete=null;clearTimeout(closeT);overlay.hidden=true;overlay.classList.remove('closing');sheet.style.transform='';document.querySelector('main').classList.remove('sheet-open');if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true})};closeComplete=complete;closeT=setTimeout(complete,motionEnabled()?510:0)
 }
 sheet.addEventListener('transitionend',e=>{if(e.target===sheet&&e.propertyName==='transform'&&closeComplete)closeComplete()});$('closeSheet').onclick=closeSheet;overlay.addEventListener('pointerdown',e=>{if(e.target===overlay)closeSheet()});document.addEventListener('keydown',e=>{if(overlay.hidden)return;if(e.key==='Escape'){e.preventDefault();closeSheet()}if(e.key==='Tab'){let f=[...sheet.querySelectorAll('button:not(:disabled),input:not(:disabled),[tabindex="0"]')].filter(x=>x.getClientRects().length);if(!f.length)return;if(e.shiftKey&&document.activeElement===f[0]){e.preventDefault();f.at(-1).focus()}else if(!e.shiftKey&&document.activeElement===f.at(-1)){e.preventDefault();f[0].focus()}}});
 function beginDrag(e){if(e.button!==0||e.target.closest('button')||overlay.classList.contains('closing'))return;drag={id:e.pointerId,y:e.clientY,lastY:e.clientY,lastT:performance.now(),velocity:0,dist:0};e.currentTarget.setPointerCapture(e.pointerId);sheet.classList.add('dragging');e.preventDefault()}
@@ -209,8 +203,8 @@ function filterSheet(k){
 }
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>filterSheet(b.dataset.filter));
 $('clear').onclick=()=>{Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';render();updateCategories()};$('sort').onclick=()=>{sort=!sort;$('sort').setAttribute('aria-pressed',String(sort));render();toast(sort?'По названию':'Исходный порядок')};$('layout').onclick=()=>{grid=!grid;$('layout').setAttribute('aria-pressed',grid);render()};$('search').oninput=render;$('resetVisible').onclick=()=>$('clear').click();
-function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 15.0</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
-$('settingsBtn').onclick=$('openSettings').onclick=settings;$('about').onclick=()=>showSheet('MARKT','<p>MARKT — каталог коллекционных подарков для FluxoGram.</p><p>Графика: собственные SVG и фрагменты присланных референсов. Коллекция, баллы и настройки хранятся в браузере.</p>');$('balanceBtn').onclick=()=>showSheet('Баллы MARKT',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Баллы MARKT не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
+function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 16.0</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
+$('settingsBtn').onclick=$('openSettings').onclick=settings;$('about').onclick=()=>showSheet('MARKT','<p>MARKT — пространство для коллекций, избранного и бесплатных игр.</p><p>Коллекция, баллы, настройки и выбранный аватар хранятся на этом устройстве. Имя отображается из данных Mini App; защищённый вход и синхронизация между устройствами не подключены. Покупки и переводы не предусмотрены.</p>');$('balanceBtn').onclick=()=>showSheet('Баллы MARKT',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Баллы MARKT не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
 let running=false,score=0,deadline=0,timer;
 function move(){let w=$('field').clientWidth,h=$('field').clientHeight;$('target').style.left=36+Math.random()*Math.max(1,w-72)+'px';$('target').style.top=36+Math.random()*Math.max(1,h-72)+'px'}
 function finish(count){clearInterval(timer);running=false;$('target').hidden=true;$('intro').hidden=false;$('start').disabled=false;$('stop').disabled=true;$('start').textContent='Играть снова';$('gameTitle').textContent=count?'Раунд завершён':'Раунд остановлен';$('gameText').textContent=count?`Результат: ${score} очков.`:'Можно начать заново.';if(count){state.best=Math.max(state.best,score);state.played++;save();toast('Результат сохранён')}}
@@ -239,7 +233,7 @@ go('market');
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)finish(false)});
 
 
-$('profileCheck').onclick=()=>{initMiniApp();renderProfile(true);screenLayout()};
+
 initMiniApp();
 window.addEventListener('resize',screenLayout);
 window.visualViewport?.addEventListener('resize',screenLayout);
@@ -251,3 +245,9 @@ window.addEventListener("hashchange",renderProfile);
 window.addEventListener("load",initMiniApp,{once:true});
 for(const ms of [300,1000,2500])setTimeout(initMiniApp,ms);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)initMiniApp()});
+
+$('sectionMenu').onclick=()=>{
+  const entries=[['free','Free','star'],['arena','Арена','arena'],['market','Маркет','market'],['gifts','Подарки','gift'],['profile','Профиль','user']];
+  showSheet('Разделы',entries.map(([id,label,ico])=>`<button class="choice sectionChoice ${id===current?'on':''}" data-section="${id}"><span class="flex">${icon(ico)} ${label}</span><span>${id===current?'✓':'›'}</span></button>`).join(''));
+  $('sheetBody').querySelectorAll('[data-section]').forEach(btn=>btn.onclick=()=>{go(btn.dataset.section);closeSheet()});
+};
