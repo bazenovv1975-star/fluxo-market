@@ -22,149 +22,115 @@ paths.plus='<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>';paths.dow
 function art(k){return `<img class="art" src="${ASSETS[k]||ASSETS.gift}" alt="" draggable="false">`}
 document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML=icon(e.dataset.icon));document.querySelectorAll('[data-art]').forEach(e=>{e.innerHTML=art(e.dataset.art)});$('logo').src=ASSETS.logo;
 
-// Profile display only. Launch data is not an authenticated server session.
-let shownProfileKey = '';
+
+// Profile display only. Launch data is not a verified login session.
+let shownProfileKey='', photoStatus='Не проверено', photoAttempt=0;
 function getBridge(){
   return window.Fluxogram?.WebApp || window.FluxoGram?.WebApp || window.Telegram?.WebApp || null;
 }
-let photoStatus='Не проверено';
-let photoAttempt=0;
 function updatePhotoStatus(value){
   photoStatus=value;
-  const label=$('photoStatus');
-  if(label)label.textContent=value;
+  const el=$('photoStatus'); if(el)el.textContent=value;
 }
 function getLaunchUser(){
   const bridge=getBridge();
-  let u=bridge?.initDataUnsafe?.user;
-  let raw=null;
+  let u=bridge?.initDataUnsafe?.user,raw=null;
   try{
     const params=new URLSearchParams(location.hash.slice(1));
     const data=bridge?.initData || params.get('tgWebAppData') || new URLSearchParams(location.search).get('tgWebAppData');
     if(data)raw=JSON.parse(new URLSearchParams(data).get('user')||'null');
   }catch{}
   if(!u)u=raw;
-  if(!u || typeof u!=='object' || !/^\d+$/.test(String(u.id))) return null;
+  if(!u || typeof u!=='object' || !/^\d+$/.test(String(u.id)))return null;
   const text=v=>typeof v==='string'?v.trim().slice(0,128):'';
   const name=[text(u.first_name),text(u.last_name)].filter(Boolean).join(' ')||text(u.username)||'Пользователь';
   const supplied=u.photo_url || (raw && String(raw.id)===String(u.id) ? raw.photo_url : '');
   let photo='';
-  try{const url=new URL(supplied);if(url.protocol==='https:' && !url.username && !url.password)photo=url.href}catch{}
-  return {name,handle:text(u.username),photo,photoPresent:!!supplied};
+  try{const url=new URL(supplied);if(url.protocol==='https:'&&!url.username&&!url.password)photo=url.href}catch{}
+  return {id:String(u.id),name,handle:text(u.username),photo,photoPresent:!!supplied};
+}
+function localPhotoKey(u){return 'markt-local-photo-v15:'+u.id}
+function readLocalPhoto(u){
+  if(!u)return '';
+  try{const v=localStorage.getItem(localPhotoKey(u))||'';return /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(v)?v:''}catch{return ''}
 }
 function renderProfile(force=false){
-  const u=getLaunchUser();
-  const key=JSON.stringify(u);
+  const u=getLaunchUser(),local=readLocalPhoto(u);
+  const key=JSON.stringify([u,local]);
   if(key===shownProfileKey && force!==true)return;
   shownProfileKey=key;
   const attempt=++photoAttempt;
   $('nickname').textContent=u?.name||'Гость';
   $('profileStatus').textContent=u?(u.handle?'@'+u.handle:'Профиль FluxoGram'):'Открой через бота';
   document.querySelector('#profile .head p').textContent=u?'Профиль из Mini App · данные не проверены сервером':'Данные аккаунта пока недоступны';
-  updatePhotoStatus(!u?'Данные профиля отсутствуют':!u.photoPresent?'Клиент не передал photo_url':!u.photo?'Адрес фотографии не является допустимым HTTPS URL':'Загрузка фотографии…');
+  $('localPhotoRemove').hidden=!local;
+  $('localPhotoInput').disabled=!u;
   const label=Array.from(u?.name||'MARKT')[0].toUpperCase();
   const slots=['avatar','navAvatar'].map(id=>$(id));
-  slots.forEach(el=>el.replaceChildren(document.createTextNode(label)));
-  if(u?.photo){
-    const pic=new Image();
-    pic.referrerPolicy='no-referrer';
-    pic.alt='';
-    pic.className='profile-photo';
-    const timeout=setTimeout(()=>{if(attempt===photoAttempt && photoStatus==='Загрузка фотографии…')updatePhotoStatus('Сервер фото не ответил')},10000);
-    pic.onload=()=>{
-      clearTimeout(timeout);
+  slots.forEach(el=>{el.textContent=label});
+  const missing=!u?'Данные профиля отсутствуют':!u.photoPresent?'FluxoGram не передал фото':!u.photo?'Адрес фото недоступен':'Фото не загрузилось';
+  function load(src,isLocal){
+    if(!src){updatePhotoStatus(missing);return}
+    updatePhotoStatus(isLocal?'Локальное фото · загрузка':'Загрузка фотографии…');
+    const pic=new Image();pic.referrerPolicy='no-referrer';pic.alt='';pic.className='profile-photo';
+    let settled=false;
+    const fail=()=>{
+      if(settled)return;settled=true;clearTimeout(timeout);
       if(attempt!==photoAttempt)return;
-      for(const el of slots)el.replaceChildren(pic.cloneNode());
-      updatePhotoStatus('Фото загружено');
+      if(!isLocal&&local)load(local,true);else updatePhotoStatus(isLocal?'Локальное фото не загрузилось':missing);
     };
-    pic.onerror=()=>{
-      clearTimeout(timeout);
-      if(attempt===photoAttempt)updatePhotoStatus('Фото передано, но не загрузилось');
+    const timeout=setTimeout(fail,8000);
+    pic.onload=()=>{
+      if(settled)return;settled=true;clearTimeout(timeout);
+      if(attempt!==photoAttempt)return;
+      for(const el of slots){el.textContent='';el.appendChild(pic.cloneNode())}
+      updatePhotoStatus(isLocal?'Локальное фото · не синхронизировано':'Фото FluxoGram загружено');
     };
-    pic.src=u.photo;
+    pic.onerror=fail;pic.src=src;
   }
+  if(u?.photo)load(u.photo,false);else if(local)load(local,true);else updatePhotoStatus(missing);
 }
-// Fullscreen is a native host capability; never simulate or hide the host controls.
-let screenBridge=null, fullscreenAttempted=false, screenStatus='', fullscreenTimer;
-const screenEvents=['fullscreenChanged','safeAreaChanged','contentSafeAreaChanged','viewportChanged'];
-function launchedInApp(b){
-  if(!b)return false;
-  return b===window.Fluxogram?.WebApp || b===window.FluxoGram?.WebApp ||
-    !!b.initData || (!!b.platform && b.platform!=='unknown') ||
-    new URLSearchParams(location.hash.slice(1)).has('tgWebAppVersion');
-}
-function fullscreenSupported(b){
-  try{return typeof b?.requestFullscreen==='function' &&
-    (typeof b.isVersionAtLeast!=='function'||b.isVersionAtLeast('8.0'))}
-  catch{return false}
-}
+$('localPhotoInput').addEventListener('change',async e=>{
+  const input=e.target,file=input.files?.[0],u=getLaunchUser();
+  input.value='';
+  if(!file||!u)return;
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024){toast('Выбери PNG, JPEG или WebP до 10 МБ');return}
+  const url=URL.createObjectURL(file);
+  try{
+    const img=new Image();
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url});
+    if(!img.naturalWidth||!img.naturalHeight)throw Error('image');
+    const c=document.createElement('canvas');c.width=c.height=256;
+    const side=Math.min(img.naturalWidth,img.naturalHeight);
+    c.getContext('2d').drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,256,256);
+    if(getLaunchUser()?.id!==u.id)return;
+    localStorage.setItem(localPhotoKey(u),c.toDataURL('image/jpeg',.88));
+    renderProfile(true);toast('Фото сохранено на устройстве');
+  }catch{toast('Не удалось сохранить фото')}finally{URL.revokeObjectURL(url)}
+});
+$('localPhotoRemove').onclick=()=>{
+  const u=getLaunchUser();if(!u)return;
+  try{localStorage.removeItem(localPhotoKey(u))}catch{}
+  renderProfile(true);
+};
+// Normal host window only. Use the real visible height instead of 100dvh.
+let screenBridge=null;
 function screenLayout(){
-  const b=screenBridge, full=b?.isFullscreen===true;
-  if(full){clearTimeout(fullscreenTimer);screenStatus=''}
+  const b=getBridge(), vv=window.visualViewport;
+  const candidates=[vv?.height,window.innerHeight,document.documentElement.clientHeight].filter(v=>Number.isFinite(v)&&v>0);
+  if(candidates.length)document.documentElement.style.setProperty('--markt-visible-height',Math.floor(Math.min(...candidates))+'px');
   const version=$('webappVersion');
   if(version)version.textContent=typeof b?.version==='string'&&/^\d+(\.\d+)*$/.test(b.version)?b.version:'Не сообщена';
-  document.documentElement.classList.toggle('native-fullscreen',full);
-  const root=document.documentElement;
-  for(const edge of ['top','right','bottom','left']){
-    const px=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(200,Number(v))):0;
-    root.style.setProperty('--markt-device-'+edge,px(b?.safeAreaInset?.[edge])+'px');
-    root.style.setProperty('--markt-content-'+edge,px(b?.contentSafeAreaInset?.[edge])+'px');
-  }
-  const label=$('fullscreenStatus');
-  if(label)label.textContent=full?'Полноэкранный режим активен':screenStatus||
-    (fullscreenSupported(b)?'Доступен в этом клиенте':'Обычный режим');
-  const button=$('fullscreenAction');
-  if(button)button.textContent=full?'Выйти из полноэкранного режима':'На весь экран';
-}
-function requestNativeFullscreen(manual=false){
-  const b=screenBridge;
-  if(!b){screenStatus='Открой приложение внутри FluxoGram';screenLayout();return}
-  if(b.isFullscreen===true){
-    if(manual&&typeof b.exitFullscreen==='function'){
-      try{b.exitFullscreen()}catch{}
-    }
-    screenLayout();return;
-  }
-  if(!fullscreenSupported(b)){
-    screenStatus='Клиент не поддерживает fullscreen API';
-    try{b.expand?.()}catch{}
-    screenLayout();return;
-  }
-  if(!manual&&fullscreenAttempted)return;
-  fullscreenAttempted=true;
-  screenStatus='Запрошен полноэкранный режим';
-  clearTimeout(fullscreenTimer);
-  fullscreenTimer=setTimeout(()=>{if(b===screenBridge && b.isFullscreen!==true && screenStatus==='Запрошен полноэкранный режим'){screenStatus='Нет подтверждения от клиента';screenLayout()}},3500);
-  try{b.requestFullscreen()}catch{
-    screenStatus='Клиент отклонил полноэкранный режим';
-    try{b.expand?.()}catch{}
-  }
-  screenLayout();
-}
-function screenFailed(event){
-  clearTimeout(fullscreenTimer);
-  if(event?.error==='ALREADY_FULLSCREEN'){screenLayout();return}
-  screenStatus=event?.error==='UNSUPPORTED'?'Клиент не поддерживает fullscreen':'Не удалось открыть на весь экран';
-  try{screenBridge?.expand?.()}catch{}
-  screenLayout();
 }
 function initMiniApp(){
   const b=getBridge();
-  if(launchedInApp(b)&&b!==screenBridge){
-    if(screenBridge){
-      for(const event of screenEvents)try{screenBridge.offEvent?.(event,screenLayout)}catch{}
-      try{screenBridge.offEvent?.('fullscreenFailed',screenFailed)}catch{}
-    }
-    screenBridge=b;fullscreenAttempted=false;screenStatus='';
-    for(const event of screenEvents)try{b.onEvent?.(event,screenLayout)}catch{}
-    try{b.onEvent?.('fullscreenFailed',screenFailed)}catch{}
-    for(const [method,args] of [['ready',[]],['setHeaderColor',['#151515']],['setBackgroundColor',['#151515']],['setBottomBarColor',['#151515']],['expand',[]]]){
-      try{if(typeof b[method]==='function')b[method](...args)}catch{}
-    }
-    requestNativeFullscreen();
+  if(b&&b!==screenBridge){
+    if(screenBridge)try{screenBridge.offEvent?.('viewportChanged',screenLayout)}catch{}
+    screenBridge=b;
+    try{b.onEvent?.('viewportChanged',screenLayout)}catch{}
+    try{b.ready?.()}catch{}
   }
-  screenLayout();
-  renderProfile();
+  screenLayout();renderProfile();
 }
 
 const defaults=()=>({stars:0,day:'',saved:[],owned:[],best:0,played:0,history:[],motion:true,giftMotion:true,respectSystemMotion:false,vibration:false,rounded:false});
@@ -243,7 +209,7 @@ function filterSheet(k){
 }
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>filterSheet(b.dataset.filter));
 $('clear').onclick=()=>{Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';render();updateCategories()};$('sort').onclick=()=>{sort=!sort;$('sort').setAttribute('aria-pressed',String(sort));render();toast(sort?'По названию':'Исходный порядок')};$('layout').onclick=()=>{grid=!grid;$('layout').setAttribute('aria-pressed',grid);render()};$('search').oninput=render;$('resetVisible').onclick=()=>$('clear').click();
-function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 14.0</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
+function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 15.0</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
 $('settingsBtn').onclick=$('openSettings').onclick=settings;$('about').onclick=()=>showSheet('MARKT','<p>MARKT — каталог коллекционных подарков для FluxoGram.</p><p>Графика: собственные SVG и фрагменты присланных референсов. Коллекция, баллы и настройки хранятся в браузере.</p>');$('balanceBtn').onclick=()=>showSheet('Баллы MARKT',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Баллы MARKT не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
 let running=false,score=0,deadline=0,timer;
 function move(){let w=$('field').clientWidth,h=$('field').clientHeight;$('target').style.left=36+Math.random()*Math.max(1,w-72)+'px';$('target').style.top=36+Math.random()*Math.max(1,h-72)+'px'}
@@ -273,10 +239,13 @@ go('market');
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)finish(false)});
 
 
-$('fullscreenToggle').onclick=()=>{initMiniApp();requestNativeFullscreen(true)};
 $('profileCheck').onclick=()=>{initMiniApp();renderProfile(true);screenLayout()};
 initMiniApp();
 window.addEventListener('resize',screenLayout);
+window.visualViewport?.addEventListener('resize',screenLayout);
+window.visualViewport?.addEventListener('scroll',screenLayout);
+window.addEventListener('orientationchange',screenLayout);
+window.addEventListener('pageshow',screenLayout);
 window.addEventListener("focus",renderProfile);
 window.addEventListener("hashchange",renderProfile);
 window.addEventListener("load",initMiniApp,{once:true});
