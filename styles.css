@@ -258,3 +258,28 @@ body:not(.rounded-ui) .rounded-art,body.rounded-ui .square-art{display:none!impo
  .categories button{grid-template-rows:44px auto}
  .categories button>span{width:44px;height:44px}
 }
+
+
+/* V11 MARKT overrides */
+html,body{min-height:100%}
+body{min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body.markt-ready{background:#111214}
+header.shell,main.shell{width:min(100%,1180px);margin:0 auto}
+header .brand>div{display:flex;flex-direction:column;gap:4px;line-height:1}
+header .brand>div small{display:block;letter-spacing:.14em;text-transform:uppercase;opacity:.62;font-size:10px}
+.demo{display:none!important}
+#free .head,#arena .head,#market .head,#gifts .head,#profile .head{align-items:flex-start}
+#free h1,#arena h1,#market h1,#gifts h1,#profile h1,
+.hero h2,.season h2,.panel h2{letter-spacing:-.03em;line-height:1.02}
+h1,h2,h3,p,small,span,strong,b{word-break:normal;overflow-wrap:anywhere}
+button,.pill,.round,.blue,.white,.secondary,.chip,.seg button,.inventory{display:inline-flex;align-items:center;justify-content:center}
+.notice{line-height:1.4}
+#avatar.has-photo,#navAvatar.has-photo{background-size:cover;background-position:center;color:transparent!important;text-indent:-9999px;overflow:hidden}
+#profile .identity .badge{background:#18202b;color:#cbe0ff;border:1px solid #ffffff12}
+header .brand img{filter:none}
+@media (max-width:760px){
+  header.shell,main.shell{width:100%}
+  main.shell{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
+  .sheet{max-width:min(100vw,560px)}
+}
+
