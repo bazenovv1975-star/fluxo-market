@@ -272,7 +272,7 @@ header .brand>div small{display:block;letter-spacing:.14em;text-transform:upperc
 #free h1,#arena h1,#market h1,#gifts h1,#profile h1,
 .hero h2,.season h2,.panel h2{letter-spacing:-.03em;line-height:1.02}
 h1,h2,h3,p,small,span,strong,b{word-break:normal;overflow-wrap:anywhere}
-button,.pill,.round,.blue,.white,.secondary,.chip,.seg button,.inventory{display:inline-flex;align-items:center;justify-content:center}
+.pill,.round,.blue,.white,.secondary,.chip{display:inline-flex;align-items:center;justify-content:center}
 .notice{line-height:1.4}
 #avatar.has-photo,#navAvatar.has-photo{background-size:cover;background-position:center;color:transparent!important;text-indent:-9999px;overflow:hidden}
 #profile .identity .badge{background:#18202b;color:#cbe0ff;border:1px solid #ffffff12}
@@ -283,3 +283,89 @@ header .brand img{filter:none}
   .sheet{max-width:min(100vw,560px)}
 }
 
+
+/* MARKT 12: compact header, adaptive catalog and native profile. */
+header.shell{height:72px;min-height:72px;gap:8px}
+header .brand{gap:8px;flex:1;min-width:0}
+header .brand img{width:44px;height:48px;object-fit:contain;flex:none}
+header .brand>div{min-width:0}
+.wordmark{font-size:clamp(19px,5vw,29px);font-weight:850;letter-spacing:.075em;color:#ffda35;white-space:nowrap;line-height:1.1}
+header .flex{flex:none;gap:5px}
+.nav button,.freeNav{display:flex;flex-direction:column;justify-content:center;align-items:center;white-space:nowrap;line-height:1.2}
+.freeNav small{font-size:11px}
+.profileNav{display:grid;place-items:center}
+#market .head{margin-bottom:15px}
+#market .head h1{font-size:clamp(27px,5vw,37px);font-weight:800;letter-spacing:-.035em}
+#market .head p{margin-top:6px;color:#b4b4b4}
+#bannerTrack>.markt-banner{display:flex;align-items:center;text-align:left;padding:12px clamp(12px,3vw,26px);background:radial-gradient(ellipse at 90% 50%,#1f4b8c,#111d33 75%);border:1px solid #ffffff12}
+#bannerTrack>.markt-banner.goldBanner{background:radial-gradient(ellipse at 90% 50%,#78501a,#302316 75%)}
+#bannerTrack>.approved-banner .collection-copy{min-width:0;max-width:66%}
+#bannerTrack>.approved-banner .collection-copy strong{white-space:normal;overflow-wrap:normal;font-size:clamp(16px,5.2cqw,27px);line-height:1.12}
+#bannerTrack>.approved-banner .collection-copy>span{font-size:clamp(11px,3.2cqw,15px);line-height:1.3}
+#bannerTrack>.approved-banner{container-type:inline-size}
+.giftname,.identity .flex>div:nth-child(2),.search,.search input,.sheetrow>div,.metrics>div{min-width:0}
+.giftname strong{line-height:1.2}
+.giftname span{line-height:1.3}
+.giftlist:not(.grid) .giftrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center}
+.giftlist:not(.grid) .giftrow .blue{min-width:0;padding-inline:9px}
+.giftlist:not(.grid) .giftrow .giftname{width:100%;text-align:left}
+#profileStatus{max-width:100%;overflow-wrap:anywhere;font-size:11px;font-weight:600;display:block;background:none!important;border:0!important;padding:3px 0}
+.identity h2{line-height:1.2;overflow-wrap:anywhere}
+#profile .identity .flex{align-items:center}
+#avatar,#navAvatar{position:relative;overflow:hidden;border-radius:50%!important;flex:none;background:#373021;color:#ffdc48;text-indent:0!important}
+.profile-photo{display:block;width:100%;height:100%;object-fit:cover;border-radius:50%!important}
+.profile-photo:not(:only-child){position:absolute;inset:0}
+.filters{max-width:100%;overflow-x:auto}
+.actionbar button{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+@media(max-width:420px){
+ header.shell{height:62px;min-height:62px;padding-inline:10px}
+ header .brand img{width:37px;height:42px}
+ header .brand{gap:5px}
+ header .wordmark{font-size:20px;letter-spacing:.045em}
+ header .pill,header .round{height:34px;min-height:34px}
+ header .round{width:34px}
+ header .flex{gap:4px}
+ main.shell{padding-inline:12px}
+ .giftlist:not(.grid) .giftrow{gap:7px}
+ .giftlist:not(.grid) .giftrow .blue{font-size:11px;padding-inline:6px}
+ .giftname strong{font-size:14px}
+ .giftname span{font-size:11px}
+ .giftlist:not(.grid) .giftrow .thumb{width:45px;height:45px}
+ .giftlist:not(.grid) .giftrow .heart{width:32px}
+ .categories button{font-size:11px;line-height:1.15}
+ .identity .inventory{min-width:0;padding:8px}
+ .hero h2{font-size:clamp(23px,7.2vw,32px)}
+ .hero .copy{max-width:70%}
+ .task .secondary{padding-inline:8px;flex:none}
+}
+@media(max-width:320px){header .balanceBlue{display:none}.giftlist:not(.grid) .giftrow{grid-template-columns:40px minmax(0,1fr) 32px}.giftlist:not(.grid) .giftrow .blue{display:none}.giftlist:not(.grid) .giftrow .thumb{width:40px;height:40px}.navwrap{padding-inline:6px}.dock{gap:4px}}
+
+/* MARKT 13: native fullscreen and safe areas */
+:root{
+  --markt-top:0px;
+  --markt-bottom:env(safe-area-inset-bottom,0px);
+  --markt-left:env(safe-area-inset-left,0px);
+  --markt-right:env(safe-area-inset-right,0px);
+}
+:root.native-fullscreen{
+  --markt-top:calc(max(env(safe-area-inset-top,0px),var(--markt-device-top,0px)) + var(--markt-content-top,0px));
+  --markt-bottom:calc(max(env(safe-area-inset-bottom,0px),var(--markt-device-bottom,0px)) + var(--markt-content-bottom,0px));
+  --markt-left:calc(max(env(safe-area-inset-left,0px),var(--markt-device-left,0px)) + var(--markt-content-left,0px));
+  --markt-right:calc(max(env(safe-area-inset-right,0px),var(--markt-device-right,0px)) + var(--markt-content-right,0px));
+}
+html{background:#151515}
+body{min-height:100vh;min-height:100dvh}
+header.shell{height:auto;min-height:calc(72px + var(--markt-top));padding-top:var(--markt-top);padding-left:calc(clamp(16px,3vw,42px) + var(--markt-left));padding-right:calc(clamp(16px,3vw,42px) + var(--markt-right))}
+main.shell{padding-left:calc(clamp(16px,3vw,42px) + var(--markt-left));padding-right:calc(clamp(16px,3vw,42px) + var(--markt-right));padding-bottom:calc(var(--nav-height,64px) + 46px + var(--markt-bottom))}
+.navwrap{padding-bottom:calc(12px + var(--markt-bottom));padding-left:calc(10px + var(--markt-left));padding-right:calc(10px + var(--markt-right))}
+.toast{bottom:calc(var(--nav-height,64px) + 35px + var(--markt-bottom))}
+.overlay{padding-top:calc(12px + var(--markt-top));padding-left:var(--markt-left);padding-right:var(--markt-right)}
+.sheet{max-height:min(calc(100dvh - var(--markt-top) - var(--markt-bottom) - 18px),780px)}
+.screenSetting>span:nth-child(2){min-width:0;display:flex;flex-direction:column;gap:4px;text-align:left}
+.screenSetting strong{font-size:14px;font-weight:650}
+.screenSetting small{font-size:11px;color:var(--muted);line-height:1.35}
+@media(max-width:760px){.sheet{padding-bottom:var(--markt-bottom);max-height:calc(100dvh - var(--markt-top) - 14px)}}
+@media(max-width:420px){
+ header.shell{min-height:calc(62px + var(--markt-top));padding-left:calc(10px + var(--markt-left));padding-right:calc(10px + var(--markt-right))}
+ main.shell{padding-left:calc(12px + var(--markt-left));padding-right:calc(12px + var(--markt-right))}
+}

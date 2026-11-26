@@ -12,6 +12,7 @@ const paths={
  grid:'<rect x="3" y="3" width="7" height="7" rx="2" fill="currentColor"/><rect x="14" y="3" width="7" height="7" rx="2" fill="currentColor"/><rect x="3" y="14" width="7" height="7" rx="2" fill="currentColor"/><rect x="14" y="14" width="7" height="7" rx="2" fill="currentColor"/>',
  chevron:'<path d="m9 6 6 6-6 6"/>',x:'<path d="m6 6 12 12M18 6 6 18"/>',reset:'<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>'};
 paths.arena='<path d="M4 3l6 2 11 13-3 3L5 8 4 3zm16 0-6 2-3 4m-3 3-5 6 3 3 5-5"/>';paths.market='<path fill="currentColor" stroke="none" d="M4 8h16l1 13H3L4 8Z"/><path d="M8 8V6a4 4 0 0 1 8 0v2" stroke="currentColor"/><path d="M9 13h6" stroke="#181818" stroke-width="1.8"/>';
+paths.expand='<path d="M8 3H3v5m13-5h5v5m0 8v5h-5M3 16v5h5"/>';
 function icon(n){return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[n]||''}</svg>`}
 
 
@@ -20,8 +21,128 @@ paths.settings='<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/><path d="m10 2 4 0
 paths.plus='<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>';paths.down='<path d="m6 9 6 6 6-6"/>';
 function art(k){return `<img class="art" src="${ASSETS[k]||ASSETS.gift}" alt="" draggable="false">`}
 document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML=icon(e.dataset.icon));document.querySelectorAll('[data-art]').forEach(e=>{e.innerHTML=art(e.dataset.art)});$('logo').src=ASSETS.logo;
-const defaults=()=>({stars:0,day:'',saved:[],owned:[],name:'MARKT User',best:0,played:0,history:[],motion:true,giftMotion:true,respectSystemMotion:false,vibration:false,rounded:false});
-let state=defaults();try{let v=JSON.parse(localStorage.getItem('markt-v11')||localStorage.getItem('fluxomarket-v2')||'null');if(v&&typeof v==='object')state={...state,...v};for(const k of ['saved','owned','history'])if(!Array.isArray(state[k]))state[k]=[];for(const k of ['stars','best','played'])if(!Number.isFinite(state[k])||state[k]<0)state[k]=0;if(typeof state.name!=='string')state.name='MARKT User'}catch{}
+
+// Profile display only. Launch data is not an authenticated server session.
+let shownProfileKey = '';
+function getBridge(){
+  return window.Fluxogram?.WebApp || window.FluxoGram?.WebApp || window.Telegram?.WebApp || null;
+}
+function getLaunchUser(){
+  const bridge=getBridge();
+  let u=bridge?.initDataUnsafe?.user;
+  if(!u){
+    try{
+      const params=new URLSearchParams(location.hash.slice(1));
+      const data=bridge?.initData || params.get('tgWebAppData') || new URLSearchParams(location.search).get('tgWebAppData');
+      if(data) u=JSON.parse(new URLSearchParams(data).get('user')||'null');
+    }catch{}
+  }
+  if(!u || typeof u!=='object' || !/^\d+$/.test(String(u.id))) return null;
+  const text=v=>typeof v==='string'?v.trim().slice(0,128):'';
+  const name=[text(u.first_name),text(u.last_name)].filter(Boolean).join(' ')||text(u.username)||'Пользователь';
+  let photo='';
+  try{const url=new URL(u.photo_url);if(url.protocol==='https:' && !url.username && !url.password)photo=url.href}catch{}
+  return {name,handle:text(u.username),photo};
+}
+function renderProfile(){
+  const u=getLaunchUser();
+  const key=JSON.stringify(u);
+  if(key===shownProfileKey)return;
+  shownProfileKey=key;
+  $('nickname').textContent=u?.name||'Гость';
+  $('profileStatus').textContent=u?(u.handle?'@'+u.handle:'Профиль FluxoGram'):'Открой через бота';
+  document.querySelector('#profile .head p').textContent=u?'Профиль из Mini App · данные не проверены сервером':'Данные аккаунта пока недоступны';
+  const label=Array.from(u?.name||'MARKT')[0].toUpperCase();
+  for(const id of ['avatar','navAvatar']){
+    const el=$(id);el.replaceChildren(document.createTextNode(label));
+    if(u?.photo){
+      const pic=document.createElement('img');
+      pic.alt='';pic.className='profile-photo';pic.referrerPolicy='no-referrer';
+      pic.addEventListener('load',()=>{if(el.contains(pic))el.replaceChildren(pic)},{once:true});
+      pic.addEventListener('error',()=>pic.remove(),{once:true});
+      el.append(pic);pic.src=u.photo;
+    }
+  }
+}
+// Fullscreen is a native host capability; never simulate or hide the host controls.
+let screenBridge=null, fullscreenAttempted=false, screenStatus='';
+const screenEvents=['fullscreenChanged','safeAreaChanged','contentSafeAreaChanged','viewportChanged'];
+function launchedInApp(b){
+  if(!b)return false;
+  return b===window.Fluxogram?.WebApp || b===window.FluxoGram?.WebApp ||
+    !!b.initData || (!!b.platform && b.platform!=='unknown') ||
+    new URLSearchParams(location.hash.slice(1)).has('tgWebAppVersion');
+}
+function fullscreenSupported(b){
+  try{return typeof b?.requestFullscreen==='function' &&
+    (typeof b.isVersionAtLeast!=='function'||b.isVersionAtLeast('8.0'))}
+  catch{return false}
+}
+function screenLayout(){
+  const b=screenBridge, full=b?.isFullscreen===true;
+  document.documentElement.classList.toggle('native-fullscreen',full);
+  const root=document.documentElement;
+  for(const edge of ['top','right','bottom','left']){
+    const px=v=>Number.isFinite(Number(v))?Math.max(0,Math.min(200,Number(v))):0;
+    root.style.setProperty('--markt-device-'+edge,px(b?.safeAreaInset?.[edge])+'px');
+    root.style.setProperty('--markt-content-'+edge,px(b?.contentSafeAreaInset?.[edge])+'px');
+  }
+  const label=$('fullscreenStatus');
+  if(label)label.textContent=full?'Полноэкранный режим активен':screenStatus||
+    (fullscreenSupported(b)?'Доступен в этом клиенте':'Обычный режим');
+  const button=$('fullscreenAction');
+  if(button)button.textContent=full?'Выйти из полноэкранного режима':'На весь экран';
+}
+function requestNativeFullscreen(manual=false){
+  const b=screenBridge;
+  if(!b){screenStatus='Открой приложение внутри FluxoGram';screenLayout();return}
+  if(b.isFullscreen===true){
+    if(manual&&typeof b.exitFullscreen==='function'){
+      try{b.exitFullscreen()}catch{}
+    }
+    screenLayout();return;
+  }
+  if(!fullscreenSupported(b)){
+    screenStatus='Клиент не поддерживает fullscreen API';
+    try{b.expand?.()}catch{}
+    screenLayout();return;
+  }
+  if(!manual&&fullscreenAttempted)return;
+  fullscreenAttempted=true;
+  screenStatus='Запрошен полноэкранный режим';
+  try{b.requestFullscreen()}catch{
+    screenStatus='Клиент отклонил полноэкранный режим';
+    try{b.expand?.()}catch{}
+  }
+  screenLayout();
+}
+function screenFailed(event){
+  if(event?.error==='ALREADY_FULLSCREEN'){screenLayout();return}
+  screenStatus=event?.error==='UNSUPPORTED'?'Клиент не поддерживает fullscreen':'Не удалось открыть на весь экран';
+  try{screenBridge?.expand?.()}catch{}
+  screenLayout();
+}
+function initMiniApp(){
+  const b=getBridge();
+  if(launchedInApp(b)&&b!==screenBridge){
+    if(screenBridge){
+      for(const event of screenEvents)try{screenBridge.offEvent?.(event,screenLayout)}catch{}
+      try{screenBridge.offEvent?.('fullscreenFailed',screenFailed)}catch{}
+    }
+    screenBridge=b;fullscreenAttempted=false;screenStatus='';
+    for(const event of screenEvents)try{b.onEvent?.(event,screenLayout)}catch{}
+    try{b.onEvent?.('fullscreenFailed',screenFailed)}catch{}
+    for(const [method,args] of [['ready',[]],['setHeaderColor',['#151515']],['setBackgroundColor',['#151515']],['setBottomBarColor',['#151515']],['expand',[]]]){
+      try{if(typeof b[method]==='function')b[method](...args)}catch{}
+    }
+    requestNativeFullscreen();
+  }
+  screenLayout();
+  renderProfile();
+}
+
+const defaults=()=>({stars:0,day:'',saved:[],owned:[],best:0,played:0,history:[],motion:true,giftMotion:true,respectSystemMotion:false,vibration:false,rounded:false});
+let state=defaults();try{let v=JSON.parse(localStorage.getItem('markt-v11')||localStorage.getItem('fluxomarket-v2')||'null');if(v&&typeof v==='object')state={...state,...v};for(const k of ['saved','owned','history'])if(!Array.isArray(state[k]))state[k]=[];for(const k of ['stars','best','played'])if(!Number.isFinite(state[k])||state[k]<0)state[k]=0;delete state.name}catch{}
 if(state.motionVersion!==10){state.motion=true;state.giftMotion=true;state.motionVersion=10;try{localStorage.setItem('markt-v11',JSON.stringify(state))}catch{}}
 const systemMotion=matchMedia('(prefers-reduced-motion: reduce)');
 function motionEnabled(){return Boolean(state.motion)&&!(state.respectSystemMotion&&systemMotion.matches)}
@@ -38,9 +159,9 @@ function storeCatalog(){if(!['market','gifts'].includes(current))return;catalogP
 function restoreCatalog(id){let p=catalogPrefs[id];filters={...p.filters};$('search').value=p.query;sort=!!p.sort;grid=!!p.grid;$('sort').setAttribute('aria-pressed',String(sort));$('layout').setAttribute('aria-pressed',String(grid));updateCategories()}
 
 function save(){try{localStorage.setItem('markt-v11',JSON.stringify(state))}catch{}sync()}
-function sync(){document.body.classList.toggle('rounded-ui',state.rounded===true);$('topOwned').textContent=state.owned.length;let n=state.stars.toLocaleString('ru-RU');['balance','seasonSum','seasonBonus','profileStars'].forEach(x=>$(x).textContent=n);['played','seasonRounds','profileRounds'].forEach(x=>$(x).textContent=state.played);['best','profileBest'].forEach(x=>$(x).textContent=state.best);['profileOwned','ownCount'].forEach(x=>$(x).textContent=state.owned.length);['profileSaved','favCount'].forEach(x=>$(x).textContent=state.saved.length);$('nickname').textContent=state.name;let letter=Array.from(state.name)[0]?.toUpperCase()||'F';$('avatar').textContent=$('navAvatar').textContent=letter;let done=state.day===today();$('claim').disabled=$('taskClaim').disabled=done;$('claim').textContent=done?'Бонус получен ✓':'Получить 25 звёзд';$('taskClaim').textContent=done?'Получено ✓':'Забрать';$('taskClaim').classList.toggle('done',done);let p=state.played%5*20;$('level').textContent=1+Math.floor(state.played/5);$('percent').textContent=p+'%';$('progress').style.width=p+'%';refreshMotion();document.body.classList.toggle('noGiftMotion',!state.giftMotion)}
+function sync(){document.body.classList.toggle('rounded-ui',state.rounded===true);$('topOwned').textContent=state.owned.length;let n=state.stars.toLocaleString('ru-RU');['balance','seasonSum','seasonBonus','profileStars'].forEach(x=>$(x).textContent=n);['played','seasonRounds','profileRounds'].forEach(x=>$(x).textContent=state.played);['best','profileBest'].forEach(x=>$(x).textContent=state.best);['profileOwned','ownCount'].forEach(x=>$(x).textContent=state.owned.length);['profileSaved','favCount'].forEach(x=>$(x).textContent=state.saved.length);renderProfile();let done=state.day===today();$('claim').disabled=$('taskClaim').disabled=done;$('claim').textContent=done?'Бонус получен ✓':'Получить 25 баллов';$('taskClaim').textContent=done?'Получено ✓':'Забрать';$('taskClaim').classList.toggle('done',done);let p=state.played%5*20;$('level').textContent=1+Math.floor(state.played/5);$('percent').textContent=p+'%';$('progress').style.width=p+'%';refreshMotion();document.body.classList.toggle('noGiftMotion',!state.giftMotion)}
 let toastT;function toast(t){$('toast').textContent=t;$('toast').classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>$('toast').classList.remove('show'),2500)}
-function claim(){if(state.day===today())return;state.day=today();state.stars+=25;save();toast('Бонус получен · +25 звёзд');bonusEffect()}
+function claim(){if(state.day===today())return;state.day=today();state.stars+=25;save();toast('Бонус получен · +25 баллов');bonusEffect()}
 $('claim').onclick=$('taskClaim').onclick=claim;
 function bonusEffect(){if(!motionEnabled())return;let r=$('balanceBtn').getBoundingClientRect();let pop=document.createElement('span');pop.className='bonusPop';pop.textContent='+25 ✦';pop.style.left=(r.left+r.width/2)+'px';pop.style.top=(r.bottom+4)+'px';document.body.append(pop);pop.addEventListener('animationend',()=>pop.remove(),{once:true});setTimeout(()=>pop.remove(),1300)}
 
@@ -79,38 +200,37 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>selectView(b.d
 $('inventory').onclick=()=>{go('gifts');selectView('mine')};$('toCatalog').onclick=()=>go('market');
 function thumb(g){return `<div class="thumb" style="--tone:${g.tone}">${art(g.emoji)}</div>`}
 function empty(t,p,btn=''){return `<div class="empty">${art('bluefrog')}<h3>${t}</h3><p>${p}</p>${btn}</div>`}
-function render(){let list=$('giftlist');$('resultCount').textContent='';$('resetVisible').hidden=true;list.classList.toggle('grid',grid&&view!=='history');if(view==='offers'){list.classList.remove('grid');list.innerHTML=empty('Пока нет предложений','В локальной версии нет сделок. Здесь будет список предложений.','<button class="white" id="offerCatalog">Открыть каталог</button>');$('offerCatalog').onclick=()=>go('market');return}if(view==='history'){list.innerHTML=state.history.length?state.history.slice().reverse().map(id=>{let g=gifts.find(x=>x.id===id);return g?`<div class="giftrow">${thumb(g)}<div class="giftname"><strong>${g.name}</strong><span>Добавлено в демо-коллекцию</span></div><span class="muted">✓</span></div>`:''}).join(''):empty('История пока пуста','Здесь появятся действия с тестовой коллекцией.');return}
-let q=$('search').value.trim().toLowerCase();let items=gifts.filter(g=>(view==='catalog'||(mine==='owned'?state.owned:state.saved).includes(g.id))&&(g.name.toLowerCase().includes(q)||String(g.id).padStart(5,'0').includes(q.replace('#','')))&&Object.keys(filters).every(k=>!filters[k]||filters[k]===g[k]));if(sort)items.sort((a,b)=>a.name.localeCompare(b.name));$('resultCount').textContent=items.length+' '+(items.length===1?'подарок':items.length>1&&items.length<5?'подарка':'подарков');$('resetVisible').hidden=!(q||Object.values(filters).some(Boolean));storeCatalog();list.innerHTML=items.length?items.map(g=>`<article class="giftrow">${thumb(g)}<button class="giftname" data-detail="${g.id}"><strong>${g.name}</strong><span>#${String(g.id).padStart(5,'0')} · ${g.model}</span></button><button class="blue" data-detail="${g.id}">Подробнее</button><button class="heart ${state.saved.includes(g.id)?'on':''}" data-save="${g.id}" aria-label="Избранное" aria-pressed="${state.saved.includes(g.id)}">${state.saved.includes(g.id)?'♥':'♡'}</button></article>`).join(''):empty(view==='mine'&&!q?'Подарков пока нет':'Ничего не найдено',view==='mine'&&!q?'Добавь тестовый подарок или открой каталог.':'Попробуй изменить запрос и фильтры.',view==='mine'?'<button class="white" id="emptyAdd">Перейти в маркет</button>':'');
+function render(){let list=$('giftlist');$('resultCount').textContent='';$('resetVisible').hidden=true;list.classList.toggle('grid',grid&&view!=='history');if(view==='offers'){list.classList.remove('grid');list.innerHTML=empty('Пока нет предложений','В локальной версии нет сделок. Здесь будет список предложений.','<button class="white" id="offerCatalog">Открыть каталог</button>');$('offerCatalog').onclick=()=>go('market');return}if(view==='history'){list.innerHTML=state.history.length?state.history.slice().reverse().map(id=>{let g=gifts.find(x=>x.id===id);return g?`<div class="giftrow">${thumb(g)}<div class="giftname"><strong>${g.name}</strong><span>Добавлено в личную коллекцию</span></div><span class="muted">✓</span></div>`:''}).join(''):empty('История пока пуста','Здесь появятся действия с личной коллекцией.');return}
+let q=$('search').value.trim().toLowerCase();let items=gifts.filter(g=>(view==='catalog'||(mine==='owned'?state.owned:state.saved).includes(g.id))&&(g.name.toLowerCase().includes(q)||String(g.id).padStart(5,'0').includes(q.replace('#','')))&&Object.keys(filters).every(k=>!filters[k]||filters[k]===g[k]));if(sort)items.sort((a,b)=>a.name.localeCompare(b.name));$('resultCount').textContent=items.length+' '+(items.length===1?'подарок':items.length>1&&items.length<5?'подарка':'подарков');$('resetVisible').hidden=!(q||Object.values(filters).some(Boolean));storeCatalog();list.innerHTML=items.length?items.map(g=>`<article class="giftrow">${thumb(g)}<button class="giftname" data-detail="${g.id}"><strong>${g.name}</strong><span>#${String(g.id).padStart(5,'0')} · ${g.model}</span></button><button class="blue" data-detail="${g.id}">Подробнее</button><button class="heart ${state.saved.includes(g.id)?'on':''}" data-save="${g.id}" aria-label="Избранное" aria-pressed="${state.saved.includes(g.id)}">${state.saved.includes(g.id)?'♥':'♡'}</button></article>`).join(''):empty(view==='mine'&&!q?'Подарков пока нет':'Ничего не найдено',view==='mine'&&!q?'Добавь подарок каталога или открой каталог.':'Попробуй изменить запрос и фильтры.',view==='mine'?'<button class="white" id="emptyAdd">Перейти в маркет</button>':'');
 list.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(+b.dataset.detail));list.querySelectorAll('[data-save]').forEach(b=>b.onclick=()=>{let id=+b.dataset.save;if(state.saved.includes(id))state.saved=state.saved.filter(x=>x!==id);else state.saved.push(id);save();if(view==='mine'&&mine==='saved')render();else{let on=state.saved.includes(id);b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);b.textContent=on?'♥':'♡'}});if($('emptyAdd'))$('emptyAdd').onclick=()=>go('market');document.querySelectorAll('[data-filter]').forEach(b=>{let k=b.dataset.filter;b.classList.toggle('on',!!filters[k]);b.innerHTML=(filters[k]||labels[k])+' '+icon('down')})}
-function detail(id){let g=gifts.find(x=>x.id===id);showSheet(g.name,`<div class="sheethero" style="background:radial-gradient(ellipse at 40% 30%,${g.tone},#202020)">${art(g.emoji)}</div><p>Демонстрационный подарок #${String(g.id).padStart(5,'0')}</p><div class="traits">${Object.keys(labels).map(k=>`<div><span>${labels[k]}</span><b>${g[k]}</b></div>`).join('')}</div>`,`<button class="white full" id="collect">${state.owned.includes(id)?'Уже в коллекции ✓':'Добавить в демо-коллекцию'}</button>`);$('collect').disabled=state.owned.includes(id);$('collect').onclick=()=>{collect(id);closeSheet()}}
+function detail(id){let g=gifts.find(x=>x.id===id);showSheet(g.name,`<div class="sheethero" style="background:radial-gradient(ellipse at 40% 30%,${g.tone},#202020)">${art(g.emoji)}</div><p>Подарок каталога #${String(g.id).padStart(5,'0')}</p><div class="traits">${Object.keys(labels).map(k=>`<div><span>${labels[k]}</span><b>${g[k]}</b></div>`).join('')}</div>`,`<button class="white full" id="collect">${state.owned.includes(id)?'Уже в коллекции ✓':'Добавить в личную коллекцию'}</button>`);$('collect').disabled=state.owned.includes(id);$('collect').onclick=()=>{collect(id);closeSheet()}}
 function collect(id){if(!state.owned.includes(id)){state.owned.push(id);state.history.push(id);save();render();toast('Подарок добавлен в коллекцию')}}
-function addGift(){showSheet('Добавить подарок',`<div class="sheethero">${art('gift')}</div><div class="sheetrow"><div class="tile">${icon('gift')}</div><div><h3>Коллекция MARKT</h3><p>Выбери образ из тестового каталога.</p></div></div><div class="sheetrow"><div class="tile">${icon('info')}</div><div><h3>Без переводов</h3><p>Ничего не отправляется в Telegram или FluxoGram.</p></div></div>`,`<button class="white full" id="pickGift">Выбрать подарок</button>`);$('pickGift').onclick=()=>showSheet('Выбери подарок',gifts.map(g=>`<button class="choice" data-pick="${g.id}" ${state.owned.includes(g.id)?'disabled':''}><span class="flex">${thumb(g)}<strong>${g.name}</strong></span><span>${state.owned.includes(g.id)?'✓':'+'}</span></button>`).join(''));}
+function addGift(){showSheet('Добавить подарок',`<div class="sheethero">${art('gift')}</div><div class="sheetrow"><div class="tile">${icon('gift')}</div><div><h3>Коллекция MARKT</h3><p>Выбери образ из каталога MARKT.</p></div></div><div class="sheetrow"><div class="tile">${icon('info')}</div><div><h3>Без переводов</h3><p>Ничего не отправляется в Telegram или FluxoGram.</p></div></div>`,`<button class="white full" id="pickGift">Выбрать подарок</button>`);$('pickGift').onclick=()=>showSheet('Выбери подарок',gifts.map(g=>`<button class="choice" data-pick="${g.id}" ${state.owned.includes(g.id)?'disabled':''}><span class="flex">${thumb(g)}<strong>${g.name}</strong></span><span>${state.owned.includes(g.id)?'✓':'+'}</span></button>`).join(''));}
 // delegated to avoid duplicate handlers during sheet navigation
 $('sheetBody').addEventListener('click',e=>{let b=e.target.closest('[data-pick]');if(b&&!b.disabled){collect(+b.dataset.pick);closeSheet()}});
-$('addGift').onclick=addGift;$('aboutGifts').onclick=()=>{showSheet('О подарках','<p>Это демонстрационная коллекция. Реальный сервер не подключён, подарки нельзя купить, передать или вывести.</p>','<button class="white full" id="okInfo">Понятно</button>');$('okInfo').onclick=closeSheet};$('collectionInfo').onclick=()=>showSheet('Коллекции Fluxo',`<div class="sheethero">${art('bluefrog')}</div><p>Выбирай модели, сохраняй понравившиеся и добавляй тестовые подарки в коллекцию MARKT.</p>`);
+$('addGift').onclick=addGift;$('aboutGifts').onclick=()=>{showSheet('О подарках','<p>Коллекция хранится на устройстве. Покупки, переводы и вывод недоступны.</p>','<button class="white full" id="okInfo">Понятно</button>');$('okInfo').onclick=closeSheet};$('collectionInfo').onclick=()=>showSheet('Коллекции MARKT',`<div class="sheethero">${art('bluefrog')}</div><p>Выбирай модели, сохраняй понравившиеся и добавляй подарки каталога в коллекцию MARKT.</p>`);
 function filterSheet(k){
  let opts=['',...new Set(gifts.map(g=>g[k]))], selected=filters[k];
- showSheet(labels[k],`<label class="search filterSearch">${icon('search')}<input id="filterQuery" placeholder="Быстрый поиск"></label><div class="filterCaption"><span>${labels[k]}</span><span>Демо-каталог</span></div><div id="filterOptions"></div>`,`<div class="dual"><button class="secondary" id="filterReset">Сбросить</button><button class="blue" id="filterApply">Применить</button></div>`);
+ showSheet(labels[k],`<label class="search filterSearch">${icon('search')}<input id="filterQuery" placeholder="Быстрый поиск"></label><div class="filterCaption"><span>${labels[k]}</span><span>Каталог MARKT</span></div><div id="filterOptions"></div>`,`<div class="dual"><button class="secondary" id="filterReset">Сбросить</button><button class="blue" id="filterApply">Применить</button></div>`);
  function draw(){let q=$('filterQuery').value.trim().toLowerCase();$('filterOptions').innerHTML=opts.map((v,i)=>({v,i})).filter(o=>(o.v||'Все').toLowerCase().includes(q)).map(({v,i})=>`<button class="filterChoice ${selected===v?'on':''}" data-option="${i}"><span class="checkMark">${selected===v?'✓':''}</span>${v&&k==='cat'?thumb(gifts.find(g=>g.cat===v)):''}<strong>${v||'Все'}</strong><span class="muted">${v?gifts.filter(g=>g[k]===v).length:''}</span></button>`).join('');$('filterOptions').querySelectorAll('button').forEach(b=>b.onclick=()=>{selected=opts[+b.dataset.option];draw()})}
  $('filterQuery').oninput=draw;$('filterReset').onclick=()=>{selected='';$('filterQuery').value='';draw()};$('filterApply').onclick=()=>{filters[k]=selected;render();updateCategories();closeSheet()};draw()
 }
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>filterSheet(b.dataset.filter));
 $('clear').onclick=()=>{Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';render();updateCategories()};$('sort').onclick=()=>{sort=!sort;$('sort').setAttribute('aria-pressed',String(sort));render();toast(sort?'По названию':'Исходный порядок')};$('layout').onclick=()=>{grid=!grid;$('layout').setAttribute('aria-pressed',grid);render()};$('search').oninput=render;$('resetVisible').onclick=()=>$('clear').click();
-function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="editFromSettings">Изменить имя <span>›</span></button><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · локальная версия 10.3</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('editFromSettings').onclick=rename;$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только тестовые бонусы, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
-function rename(){showSheet('Изменить имя','<label class="search"><input id="nameInput" maxlength="24" placeholder="Имя"></label>','<button class="white full" id="saveName">Сохранить</button>');$('nameInput').value=state.name;$('saveName').onclick=()=>{state.name=$('nameInput').value.trim()||'MARKT User';save();closeSheet()};$('nameInput').onkeydown=e=>{if(e.key==='Enter')$('saveName').click()}}
-$('settingsBtn').onclick=$('openSettings').onclick=settings;$('rename').onclick=rename;$('about').onclick=()=>showSheet('MARKT','<p>Самостоятельный локальный прототип интерфейса для FluxoGram. Не связан с Portals или Telegram.</p><p>Графика: собственные SVG и фрагменты присланных референсов. Только для локального визуального теста. Данные хранятся в браузере.</p>');$('balanceBtn').onclick=()=>showSheet('Демо-баланс',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Тестовые звёзды не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
+function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 13</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
+$('settingsBtn').onclick=$('openSettings').onclick=settings;$('about').onclick=()=>showSheet('MARKT','<p>MARKT — каталог коллекционных подарков для FluxoGram.</p><p>Графика: собственные SVG и фрагменты присланных референсов. Коллекция, баллы и настройки хранятся в браузере.</p>');$('balanceBtn').onclick=()=>showSheet('Баллы MARKT',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Баллы MARKT не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
 let running=false,score=0,deadline=0,timer;
 function move(){let w=$('field').clientWidth,h=$('field').clientHeight;$('target').style.left=36+Math.random()*Math.max(1,w-72)+'px';$('target').style.top=36+Math.random()*Math.max(1,h-72)+'px'}
 function finish(count){clearInterval(timer);running=false;$('target').hidden=true;$('intro').hidden=false;$('start').disabled=false;$('stop').disabled=true;$('start').textContent='Играть снова';$('gameTitle').textContent=count?'Раунд завершён':'Раунд остановлен';$('gameText').textContent=count?`Результат: ${score} очков.`:'Можно начать заново.';if(count){state.best=Math.max(state.best,score);state.played++;save();toast('Результат сохранён')}}
 function tick(){let n=Math.max(0,Math.ceil((deadline-performance.now())/1000));$('time').textContent='00:'+String(n).padStart(2,'0');if(!n)finish(true)}
-$('start').onclick=()=>{if(running)return;running=true;score=0;$('score').textContent='0';$('intro').hidden=true;$('target').hidden=false;$('start').disabled=true;$('stop').disabled=false;deadline=performance.now()+15000;move();tick();timer=setInterval(tick,100)};$('stop').onclick=()=>finish(false);$('target').onclick=()=>{if(!running)return;if(performance.now()>=deadline)return finish(true);score++;$('score').textContent=score;move()};$('rules').onclick=()=>showSheet('Правила арены','<p>Нажимай на синие цели в течение 15 секунд. Каждое попадание приносит одно очко.</p><p>Участие бесплатно, результат не влияет на баланс звёзд.</p>');
+$('start').onclick=()=>{if(running)return;running=true;score=0;$('score').textContent='0';$('intro').hidden=true;$('target').hidden=false;$('start').disabled=true;$('stop').disabled=false;deadline=performance.now()+15000;move();tick();timer=setInterval(tick,100)};$('stop').onclick=()=>finish(false);$('target').onclick=()=>{if(!running)return;if(performance.now()>=deadline)return finish(true);score++;$('score').textContent=score;move()};$('rules').onclick=()=>showSheet('Правила арены','<p>Нажимай на синие цели в течение 15 секунд. Каждое попадание приносит одно очко.</p><p>Участие бесплатно, результат не влияет на баллы MARKT.</p>');
 sync();render();
 
 
 function updateCategories(){document.querySelectorAll('[data-category]').forEach(b=>(b.classList.toggle('active',b.dataset.category===filters.cat),b.setAttribute('aria-pressed',String(b.dataset.category===filters.cat))))}
 document.querySelectorAll('[data-category]').forEach(b=>b.onclick=()=>{filters.cat=b.dataset.category;updateCategories();render()});
 $('collectionBtn').onclick=()=>go('gifts');
-$('previewGift').onclick=()=>{if(state.owned.length)detail(state.owned[0]);else showSheet('Просмотр',empty('Список подарков пуст','Добавь тестовый подарок, чтобы открыть его карточку.'))};
+$('previewGift').onclick=()=>{if(state.owned.length)detail(state.owned[0]);else showSheet('Просмотр',empty('Список подарков пуст','Добавь подарок каталога, чтобы открыть его карточку.'))};
 document.addEventListener('click',e=>{if(state.vibration&&e.target.closest('button:not(:disabled)')&&navigator.vibrate)navigator.vibrate(12)});
 const track=$('bannerTrack');let bannerIndex=0;
 const dots=$('bannerDots');dots.innerHTML=[...track.children].map((_,i)=>`<button aria-label="Баннер ${i+1}" data-banner="${i}"></button>`).join('');
@@ -127,85 +247,9 @@ go('market');
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)finish(false)});
 
 
-;(function(){
-  function setText(selector, text){
-    const el=document.querySelector(selector);
-    if(el && typeof text==="string") el.textContent=text;
-  }
-  function setHTML(selector, html){
-    const el=document.querySelector(selector);
-    if(el) el.innerHTML=html;
-  }
-  function setAvatar(el, label, photo){
-    if(!el) return;
-    if(photo){
-      el.classList.add('has-photo');
-      el.style.backgroundImage='url("'+photo.replace(/"/g,'\\"')+'")';
-      el.textContent='';
-    }else{
-      el.classList.remove('has-photo');
-      el.style.backgroundImage='';
-      el.textContent=label || 'M';
-    }
-  }
-  function applyUser(user){
-    if(!user) return;
-    const first = user.first_name || user.username || 'MARKT User';
-    const last = user.last_name ? ' ' + user.last_name : '';
-    const full = (first + last).trim();
-    const handle = user.username ? '@' + user.username : 'Аккаунт Fluxogram';
-    const avatarLetter = (first || 'M').trim().charAt(0).toUpperCase() || 'M';
-
-    setText('#nickname', full);
-    const head = document.querySelector('#profile .head p');
-    if(head) head.textContent = handle;
-
-    const avatar = document.getElementById('avatar');
-    const navAvatar = document.getElementById('navAvatar');
-    setAvatar(avatar, avatarLetter, user.photo_url);
-    setAvatar(navAvatar, avatarLetter, user.photo_url);
-  }
-
-  function applyBrand(){
-    document.body.classList.add('markt-ready');
-
-    setText('header .brand > div', 'MARKT');
-    const brandSmall = document.querySelector('header .brand small');
-    if(brandSmall) brandSmall.textContent = 'FLUXOGRAM MINI APP';
-
-    const title = document.querySelector('title');
-    if(title) title.textContent = 'MARKT';
-
-    const logo = document.getElementById('logo');
-    if(logo) logo.src = 'assets/logo-markt.png';
-
-    document.querySelectorAll('.demo').forEach(el=>el.remove());
-    const freeNav = document.querySelector('#dock .freeNav small');
-    if(freeNav) freeNav.textContent = 'Free';
-
-    const freeTitle = document.querySelector('#free h1');
-    if(freeTitle) freeTitle.textContent = 'Free';
-
-    const profileBadge = document.querySelector('#profile .identity .badge');
-    if(profileBadge) profileBadge.textContent = 'ACCOUNT';
-  }
-
-  try{
-    const tg = (window.Telegram && window.Telegram.WebApp) || (window.Fluxogram && window.Fluxogram.WebApp);
-    if(tg){
-      tg.ready && tg.ready();
-      tg.expand && tg.expand();
-      tg.disableVerticalSwipes && tg.disableVerticalSwipes();
-      tg.setHeaderColor && tg.setHeaderColor('#151515');
-      tg.setBackgroundColor && tg.setBackgroundColor('#151515');
-      const user = (tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
-      applyBrand();
-      if(user) applyUser(user);
-    }else{
-      applyBrand();
-    }
-  }catch(e){
-    applyBrand();
-    console && console.warn && console.warn('WebApp init failed:', e);
-  }
-})();
+$('fullscreenToggle').onclick=()=>{initMiniApp();requestNativeFullscreen(true)};
+initMiniApp();
+window.addEventListener('resize',screenLayout);
+window.addEventListener("focus",renderProfile);
+window.addEventListener("hashchange",renderProfile);
+window.addEventListener("load",initMiniApp,{once:true});
