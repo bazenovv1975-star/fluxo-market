@@ -27,45 +27,55 @@ let shownProfileKey = '';
 function getBridge(){
   return window.Fluxogram?.WebApp || window.FluxoGram?.WebApp || window.Telegram?.WebApp || null;
 }
+let photoStatus='Не проверено';
+let photoAttempt=0;
+function updatePhotoStatus(value){
+  photoStatus=value;
+  const label=$('photoStatus');
+  if(label)label.textContent=value;
+}
 function getLaunchUser(){
   const bridge=getBridge();
   let u=bridge?.initDataUnsafe?.user;
-  if(!u){
-    try{
-      const params=new URLSearchParams(location.hash.slice(1));
-      const data=bridge?.initData || params.get('tgWebAppData') || new URLSearchParams(location.search).get('tgWebAppData');
-      if(data) u=JSON.parse(new URLSearchParams(data).get('user')||'null');
-    }catch{}
-  }
+  let raw=null;
+  try{
+    const params=new URLSearchParams(location.hash.slice(1));
+    const data=bridge?.initData || params.get('tgWebAppData') || new URLSearchParams(location.search).get('tgWebAppData');
+    if(data)raw=JSON.parse(new URLSearchParams(data).get('user')||'null');
+  }catch{}
+  if(!u)u=raw;
   if(!u || typeof u!=='object' || !/^\d+$/.test(String(u.id))) return null;
   const text=v=>typeof v==='string'?v.trim().slice(0,128):'';
   const name=[text(u.first_name),text(u.last_name)].filter(Boolean).join(' ')||text(u.username)||'Пользователь';
+  const supplied=u.photo_url || (raw && String(raw.id)===String(u.id) ? raw.photo_url : '');
   let photo='';
-  try{const url=new URL(u.photo_url);if(url.protocol==='https:' && !url.username && !url.password)photo=url.href}catch{}
-  return {name,handle:text(u.username),photo};
+  try{const url=new URL(supplied);if(url.protocol==='https:' && !url.username && !url.password)photo=url.href}catch{}
+  return {name,handle:text(u.username),photo,photoPresent:!!supplied};
 }
-function renderProfile(){
+function renderProfile(force=false){
   const u=getLaunchUser();
   const key=JSON.stringify(u);
-  if(key===shownProfileKey)return;
+  if(key===shownProfileKey && force!==true)return;
   shownProfileKey=key;
+  const attempt=++photoAttempt;
   $('nickname').textContent=u?.name||'Гость';
   $('profileStatus').textContent=u?(u.handle?'@'+u.handle:'Профиль FluxoGram'):'Открой через бота';
   document.querySelector('#profile .head p').textContent=u?'Профиль из Mini App · данные не проверены сервером':'Данные аккаунта пока недоступны';
+  updatePhotoStatus(!u?'Данные профиля отсутствуют':!u.photoPresent?'Клиент не передал photo_url':!u.photo?'Адрес фотографии не является допустимым HTTPS URL':'Загрузка фотографии…');
   const label=Array.from(u?.name||'MARKT')[0].toUpperCase();
   for(const id of ['avatar','navAvatar']){
     const el=$(id);el.replaceChildren(document.createTextNode(label));
     if(u?.photo){
       const pic=document.createElement('img');
       pic.alt='';pic.className='profile-photo';pic.referrerPolicy='no-referrer';
-      pic.addEventListener('load',()=>{if(el.contains(pic))el.replaceChildren(pic)},{once:true});
-      pic.addEventListener('error',()=>pic.remove(),{once:true});
+      pic.addEventListener('load',()=>{if(attempt===photoAttempt && el.contains(pic)){el.replaceChildren(pic);updatePhotoStatus('Фото загружено')}},{once:true});
+      pic.addEventListener('error',()=>{if(attempt===photoAttempt && el.contains(pic)){pic.remove();if(photoStatus!=='Фото загружено')updatePhotoStatus('Фото передано, но не загрузилось')}},{once:true});
       el.append(pic);pic.src=u.photo;
     }
   }
 }
 // Fullscreen is a native host capability; never simulate or hide the host controls.
-let screenBridge=null, fullscreenAttempted=false, screenStatus='';
+let screenBridge=null, fullscreenAttempted=false, screenStatus='', fullscreenTimer;
 const screenEvents=['fullscreenChanged','safeAreaChanged','contentSafeAreaChanged','viewportChanged'];
 function launchedInApp(b){
   if(!b)return false;
@@ -80,6 +90,9 @@ function fullscreenSupported(b){
 }
 function screenLayout(){
   const b=screenBridge, full=b?.isFullscreen===true;
+  if(full){clearTimeout(fullscreenTimer);screenStatus=''}
+  const version=$('webappVersion');
+  if(version)version.textContent=typeof b?.version==='string'&&/^\d+(\.\d+)*$/.test(b.version)?b.version:'Не сообщена';
   document.documentElement.classList.toggle('native-fullscreen',full);
   const root=document.documentElement;
   for(const edge of ['top','right','bottom','left']){
@@ -110,6 +123,8 @@ function requestNativeFullscreen(manual=false){
   if(!manual&&fullscreenAttempted)return;
   fullscreenAttempted=true;
   screenStatus='Запрошен полноэкранный режим';
+  clearTimeout(fullscreenTimer);
+  fullscreenTimer=setTimeout(()=>{if(b===screenBridge && b.isFullscreen!==true && screenStatus==='Запрошен полноэкранный режим'){screenStatus='Нет подтверждения от клиента';screenLayout()}},3500);
   try{b.requestFullscreen()}catch{
     screenStatus='Клиент отклонил полноэкранный режим';
     try{b.expand?.()}catch{}
@@ -117,6 +132,7 @@ function requestNativeFullscreen(manual=false){
   screenLayout();
 }
 function screenFailed(event){
+  clearTimeout(fullscreenTimer);
   if(event?.error==='ALREADY_FULLSCREEN'){screenLayout();return}
   screenStatus=event?.error==='UNSUPPORTED'?'Клиент не поддерживает fullscreen':'Не удалось открыть на весь экран';
   try{screenBridge?.expand?.()}catch{}
@@ -217,7 +233,7 @@ function filterSheet(k){
 }
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>filterSheet(b.dataset.filter));
 $('clear').onclick=()=>{Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';render();updateCategories()};$('sort').onclick=()=>{sort=!sort;$('sort').setAttribute('aria-pressed',String(sort));render();toast(sort?'По названию':'Исходный порядок')};$('layout').onclick=()=>{grid=!grid;$('layout').setAttribute('aria-pressed',grid);render()};$('search').oninput=render;$('resetVisible').onclick=()=>$('clear').click();
-function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 13</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
+function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 13.1</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
 $('settingsBtn').onclick=$('openSettings').onclick=settings;$('about').onclick=()=>showSheet('MARKT','<p>MARKT — каталог коллекционных подарков для FluxoGram.</p><p>Графика: собственные SVG и фрагменты присланных референсов. Коллекция, баллы и настройки хранятся в браузере.</p>');$('balanceBtn').onclick=()=>showSheet('Баллы MARKT',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Баллы MARKT не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
 let running=false,score=0,deadline=0,timer;
 function move(){let w=$('field').clientWidth,h=$('field').clientHeight;$('target').style.left=36+Math.random()*Math.max(1,w-72)+'px';$('target').style.top=36+Math.random()*Math.max(1,h-72)+'px'}
@@ -248,6 +264,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)fi
 
 
 $('fullscreenToggle').onclick=()=>{initMiniApp();requestNativeFullscreen(true)};
+$('profileCheck').onclick=()=>{initMiniApp();renderProfile(true);screenLayout()};
 initMiniApp();
 window.addEventListener('resize',screenLayout);
 window.addEventListener("focus",renderProfile);
