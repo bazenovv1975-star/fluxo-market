@@ -371,3 +371,24 @@ main.shell{padding-left:calc(clamp(16px,3vw,42px) + var(--markt-left));padding-r
 }
 
 .profileDiagnostics{margin-top:16px;padding:16px;display:grid;gap:12px}.profileDiagnostics>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:12px;align-items:start;font-size:13px}.profileDiagnostics>div>span{color:var(--muted)}.profileDiagnostics strong{text-align:right;overflow-wrap:anywhere}.profileDiagnostics button{min-width:0}
+
+/* MARKT 14: crisp art and dedicated navigation area, no overlapping controls. */
+html{height:100%;overflow:hidden}
+body{height:100vh;height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#151515}
+header.shell{flex:0 0 auto;position:relative}
+main.shell{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:20px;scrollbar-width:thin}
+.navwrap{position:relative;flex:none;pointer-events:auto;padding-top:8px;background:#151515;border-top:1px solid #ffffff10}
+.nav{background:linear-gradient(155deg,#ffffff12,#151515 55%,#ffffff08),#151515}
+.freeNav,.profileNav{background:#222}
+#bannerTrack>.hd-banner{display:block;padding:0;border:1px solid #4f8bde66;aspect-ratio:1916/821;overflow:hidden;background:#071b3f}
+#bannerTrack>.hd-banner>.hd-banner-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center;pointer-events:none;user-select:none}
+#bannerTrack>.hd-banner:before,#bannerTrack>.hd-banner:after{display:none}
+#bannerTrack>.goldBanner .season-mascot{width:40%;height:90%;right:2%;object-fit:contain;mask-image:radial-gradient(ellipse at 52% 50%,#000 55%,transparent 75%)}
+#bannerTrack>.goldBanner .collection-copy{max-width:57%}
+#avatar .profile-photo,#navAvatar .profile-photo{display:block;width:100%;height:100%;object-fit:cover;position:static}
+.identity .inventory{display:grid;gap:4px;min-width:0}
+.identity .inventory h3{display:flex;align-items:center;gap:4px}
+.release-label{color:var(--muted);font-size:11px;text-align:right}
+@media(max-height:660px){main.shell{padding-top:12px}.navwrap{padding-top:5px;padding-bottom:calc(6px + var(--markt-bottom))}}
+@media(min-width:761px){#bannerTrack>.approved-banner .collection-copy strong{font-size:clamp(13px,4.9cqw,27px)}}
+@media(max-width:370px){.nav button{font-size:9px}.identity .flex{flex-wrap:wrap}.identity .inventory{margin-left:auto}}

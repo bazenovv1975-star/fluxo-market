@@ -1,4 +1,4 @@
-const ASSETS={"gift": "assets/gift.svg", "bolt": "assets/bolt.svg", "🎇": "assets/sparkler.svg", "💎": "assets/crystal.svg", "🍭": "assets/candy.svg", "🐤": "assets/duck.svg", "👑": "assets/crown.svg", "🌟": "assets/star.svg", "🧸": "assets/bear.svg", "frog": "assets/pepe-pool.png", "logo": "assets/logo-markt.png", "bluefrog": "assets/pepe-heart.png", "rocket": "assets/rocket.svg"};
+const ASSETS={"gift": "assets/gift.svg", "bolt": "assets/bolt.svg", "🎇": "assets/sparkler.svg", "💎": "assets/crystal.svg", "🍭": "assets/candy.svg", "🐤": "assets/duck.svg", "👑": "assets/crown.svg", "🌟": "assets/star.svg", "🧸": "assets/bear.svg", "frog": "assets/pool-pepe-hd.webp", "logo": "assets/logo-markt.png", "bluefrog": "assets/pepe-heart.png", "rocket": "assets/rocket.svg"};
 const paths={
  star:'<path fill="currentColor" stroke="none" d="M12 1.8 15 8.3 22 9.1 16.9 14l1.4 7L12 17.5 5.7 21 7.1 14 2 9.1l7-.8z"/>',
  spark:'<path d="m12 2 2.8 7.2L22 12l-7.2 2.8L12 22l-2.8-7.2L2 12l7.2-2.8z"/>',
@@ -63,15 +63,25 @@ function renderProfile(force=false){
   document.querySelector('#profile .head p').textContent=u?'Профиль из Mini App · данные не проверены сервером':'Данные аккаунта пока недоступны';
   updatePhotoStatus(!u?'Данные профиля отсутствуют':!u.photoPresent?'Клиент не передал photo_url':!u.photo?'Адрес фотографии не является допустимым HTTPS URL':'Загрузка фотографии…');
   const label=Array.from(u?.name||'MARKT')[0].toUpperCase();
-  for(const id of ['avatar','navAvatar']){
-    const el=$(id);el.replaceChildren(document.createTextNode(label));
-    if(u?.photo){
-      const pic=document.createElement('img');
-      pic.alt='';pic.className='profile-photo';pic.referrerPolicy='no-referrer';
-      pic.addEventListener('load',()=>{if(attempt===photoAttempt && el.contains(pic)){el.replaceChildren(pic);updatePhotoStatus('Фото загружено')}},{once:true});
-      pic.addEventListener('error',()=>{if(attempt===photoAttempt && el.contains(pic)){pic.remove();if(photoStatus!=='Фото загружено')updatePhotoStatus('Фото передано, но не загрузилось')}},{once:true});
-      el.append(pic);pic.src=u.photo;
-    }
+  const slots=['avatar','navAvatar'].map(id=>$(id));
+  slots.forEach(el=>el.replaceChildren(document.createTextNode(label)));
+  if(u?.photo){
+    const pic=new Image();
+    pic.referrerPolicy='no-referrer';
+    pic.alt='';
+    pic.className='profile-photo';
+    const timeout=setTimeout(()=>{if(attempt===photoAttempt && photoStatus==='Загрузка фотографии…')updatePhotoStatus('Сервер фото не ответил')},10000);
+    pic.onload=()=>{
+      clearTimeout(timeout);
+      if(attempt!==photoAttempt)return;
+      for(const el of slots)el.replaceChildren(pic.cloneNode());
+      updatePhotoStatus('Фото загружено');
+    };
+    pic.onerror=()=>{
+      clearTimeout(timeout);
+      if(attempt===photoAttempt)updatePhotoStatus('Фото передано, но не загрузилось');
+    };
+    pic.src=u.photo;
   }
 }
 // Fullscreen is a native host capability; never simulate or hide the host controls.
@@ -164,7 +174,7 @@ const systemMotion=matchMedia('(prefers-reduced-motion: reduce)');
 function motionEnabled(){return Boolean(state.motion)&&!(state.respectSystemMotion&&systemMotion.matches)}
 function motionStatus(){return !state.motion?'Выключены в меню сайта':state.respectSystemMotion&&systemMotion.matches?'Выключены системной настройкой':systemMotion.matches?'Включены на сайте · системное ограничение не применяется':'Включены'}
 function refreshMotion(){document.body.classList.toggle('noMotion',!motionEnabled());const label=document.getElementById('motionStatus');if(label)label.textContent=motionStatus()}
-systemMotion.addEventListener('change',refreshMotion);
+if(systemMotion.addEventListener)systemMotion.addEventListener('change',refreshMotion);else if(systemMotion.addListener)systemMotion.addListener(refreshMotion);
 const today=()=>{let d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};let current='',view='catalog',mine='owned',sort=false,grid=false;
 const gifts=[{id:9,name:'Blue Pepe',cat:'Персонажи',emoji:'bluefrog',tone:'#366ca2',model:'Classic',background:'Ночь',symbol:'Сердце'},{id:1,name:'Pool Pepe',cat:'Персонажи',emoji:'frog',tone:'#559963',model:'Pool',background:'Изумруд',symbol:'Звезда'},{id:2,name:'Party Sparkler',cat:'Праздник',emoji:'🎇',tone:'#a46576',model:'Классика',background:'Роза',symbol:'Искра'},{id:3,name:'Crystal Heart',cat:'Коллекционные',emoji:'💎',tone:'#587fab',model:'Deluxe',background:'Ночь',symbol:'Сердце'},{id:4,name:'Candy Pop',cat:'Праздник',emoji:'🍭',tone:'#ad75a6',model:'Studio',background:'Роза',symbol:'Искра'},{id:5,name:'Lucky Duck',cat:'Персонажи',emoji:'🐤',tone:'#b5a349',model:'Классика',background:'Золото',symbol:'Звезда'},{id:6,name:'Golden Crown',cat:'Коллекционные',emoji:'👑',tone:'#a17c3e',model:'Deluxe',background:'Золото',symbol:'Звезда'},{id:7,name:'Magic Star',cat:'Коллекционные',emoji:'🌟',tone:'#8676b2',model:'Studio',background:'Ночь',symbol:'Искра'},{id:8,name:'Teddy Bear',cat:'Персонажи',emoji:'🧸',tone:'#a68060',model:'Классика',background:'Золото',symbol:'Сердце'}];
 const labels={cat:'Коллекция',model:'Модель',background:'Фон',symbol:'Символ'};const blankFilters=()=>({cat:'',model:'',background:'',symbol:''});
@@ -196,7 +206,7 @@ function go(id){
    $(id==='market'?'marketSlot':'mineSlot').append($('sharedCatalog'));
    restoreCatalog(id);selectView(id==='market'?'catalog':'mine');
  }
- window.scrollTo({top:0,behavior:'instant'});sync()
+ document.querySelector('main').scrollTop=0;sync()
 }
 document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>go(b.dataset.page));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
 let closeT,openFrame,previousFocus,drag=null,closeComplete=null;const overlay=$('overlay'),sheet=$('sheet');
@@ -233,7 +243,7 @@ function filterSheet(k){
 }
 document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>filterSheet(b.dataset.filter));
 $('clear').onclick=()=>{Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';render();updateCategories()};$('sort').onclick=()=>{sort=!sort;$('sort').setAttribute('aria-pressed',String(sort));render();toast(sort?'По названию':'Исходный порядок')};$('layout').onclick=()=>{grid=!grid;$('layout').setAttribute('aria-pressed',grid);render()};$('search').oninput=render;$('resetVisible').onclick=()=>$('clear').click();
-function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 13.1</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
+function settings(){showSheet('Меню',`<div class="sheetrow"><div style="flex:1"><h3>Скругления интерфейса</h3><p>Вернуть мягкие углы карточек, кнопок и меню.</p></div><input type="checkbox" class="switch" aria-label="Скругления интерфейса" id="roundedUI" ${state.rounded?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации интерфейса</h3><p>Плавные переходы и стеклянная навигация.</p></div><input type="checkbox" class="switch" aria-label="Анимации интерфейса" id="motion" ${state.motion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Учитывать настройки системы</h3><p>Ограничивать движение, если это выбрано в системе.</p></div><input type="checkbox" class="switch" aria-label="Учитывать настройки системы" id="respectMotion" ${state.respectSystemMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Анимации подарков</h3><p>Мягкое движение иллюстраций.</p></div><input type="checkbox" class="switch" id="giftMotion" aria-label="Анимации подарков" ${state.giftMotion?'checked':''}></div><div class="sheetrow"><div style="flex:1"><h3>Вибрация</h3><p>При нажатии, если устройство поддерживает.</p></div><input type="checkbox" class="switch" id="vibration" aria-label="Вибрация" ${state.vibration?'checked':''}></div><div class="sheetrow"><div><h3>Язык</h3><p>Русский</p></div></div><button class="choice" id="resetState">Сбросить данные <span>›</span></button><button class="choice" id="motionPreview">Проверить анимацию <span>›</span></button><p id="motionStatus" role="status">${motionStatus()}</p><p>MARKT · версия 14.0</p>`);$('motionPreview').onclick=()=>{if(!motionEnabled()){toast(motionStatus());return}const el=$('motionPreview');el.animate([{transform:'translateX(0)',backgroundColor:'#242424'},{transform:'translateX(7px)',backgroundColor:'#214365'},{transform:'translateX(0)',backgroundColor:'#242424'}],{duration:720,easing:'cubic-bezier(.22,.8,.3,1)'});toast('Анимации включены')};$('roundedUI').onchange=e=>{state.rounded=e.target.checked;save()};$('motion').onchange=e=>{state.motion=e.target.checked;save()};$('respectMotion').onchange=e=>{state.respectSystemMotion=e.target.checked;save()};$('giftMotion').onchange=e=>{state.giftMotion=e.target.checked;save()};$('vibration').onchange=e=>{state.vibration=e.target.checked;save()};$('resetState').onclick=()=>{showSheet('Сбросить данные?','<p>Будут удалены только баллы MARKT, коллекция и локальная статистика.</p>','<button class="white full" id="confirmReset">Сбросить</button>');$('confirmReset').onclick=()=>{state=defaults();save();render();closeSheet();toast('Данные сброшены')}}}
 $('settingsBtn').onclick=$('openSettings').onclick=settings;$('about').onclick=()=>showSheet('MARKT','<p>MARKT — каталог коллекционных подарков для FluxoGram.</p><p>Графика: собственные SVG и фрагменты присланных референсов. Коллекция, баллы и настройки хранятся в браузере.</p>');$('balanceBtn').onclick=()=>showSheet('Баллы MARKT',`<div class="sheethero" style="background:radial-gradient(ellipse,#6c4c17,#2b2318)">${art('🌟')}</div><h2>${state.stars} ✦</h2><p>Баллы MARKT не имеют денежной стоимости. Покупка, обмен и вывод не предусмотрены.</p>`);
 let running=false,score=0,deadline=0,timer;
 function move(){let w=$('field').clientWidth,h=$('field').clientHeight;$('target').style.left=36+Math.random()*Math.max(1,w-72)+'px';$('target').style.top=36+Math.random()*Math.max(1,h-72)+'px'}
@@ -270,3 +280,5 @@ window.addEventListener('resize',screenLayout);
 window.addEventListener("focus",renderProfile);
 window.addEventListener("hashchange",renderProfile);
 window.addEventListener("load",initMiniApp,{once:true});
+for(const ms of [300,1000,2500])setTimeout(initMiniApp,ms);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)initMiniApp()});
