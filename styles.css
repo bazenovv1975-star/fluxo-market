@@ -342,14 +342,7 @@ header .flex{flex:none;gap:5px}
 
 
 
-/* MARKT 14: crisp art and dedicated navigation area, no overlapping controls. */
-html{height:100%;overflow:hidden}
-body{height:100vh;height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#151515}
-header.shell{flex:0 0 auto;position:relative}
-main.shell{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:20px;scrollbar-width:thin}
-.navwrap{position:relative;flex:none;pointer-events:auto;padding-top:8px;background:#151515;border-top:1px solid #ffffff10}
-.nav{background:linear-gradient(155deg,#ffffff12,#151515 55%,#ffffff08),#151515}
-.freeNav,.profileNav{background:#222}
+
 #bannerTrack>.hd-banner{display:block;padding:0;border:1px solid #4f8bde66;aspect-ratio:1916/821;overflow:hidden;background:#071b3f}
 #bannerTrack>.hd-banner>.hd-banner-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center;pointer-events:none;user-select:none}
 #bannerTrack>.hd-banner:before,#bannerTrack>.hd-banner:after{display:none}
@@ -359,54 +352,7 @@ main.shell{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contai
 .identity .inventory{display:grid;gap:4px;min-width:0}
 .identity .inventory h3{display:flex;align-items:center;gap:4px}
 .release-label{color:var(--muted);font-size:11px;text-align:right}
-@media(max-height:660px){main.shell{padding-top:12px}.navwrap{padding-top:5px;padding-bottom:calc(6px + var(--markt-bottom))}}
-@media(min-width:761px){#bannerTrack>.approved-banner .collection-copy strong{font-size:clamp(13px,4.9cqw,27px)}}
-@media(max-width:370px){.nav button{font-size:9px}.identity .flex{flex-wrap:wrap}.identity .inventory{margin-left:auto}}
 
-/* MARKT 15: ordinary embedded window, independent content and navigation. */
-:root{--markt-bottom:env(safe-area-inset-bottom,0px);--markt-visible-height:100vh}
-html{height:100%;overflow:hidden}
-body{margin:0;height:var(--markt-visible-height);min-height:0;max-height:var(--markt-visible-height);display:flex;flex-direction:column;overflow:hidden}
-header.shell{position:relative;flex:0 0 auto;min-height:58px;height:auto;padding-block:8px}
-main.shell{flex:1 1 0%;min-height:0;max-width:100%;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:18px}
-.navwrap{position:relative;inset:auto;flex:0 0 auto;z-index:30;display:flex;visibility:visible;opacity:1;pointer-events:auto;justify-content:center;background:#151515;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
-.dock{display:flex;width:min(100%,540px);min-width:0;gap:5px;align-items:stretch;flex-shrink:1}
-.nav{flex:1 1 0;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:56px;padding:3px}
-.freeNav,.profileNav{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 52px;width:52px;height:56px}
-.profileNav .bubble{width:38px;height:38px}
-.nav button{min-width:0;height:100%;font-size:11px;white-space:nowrap;gap:4px}
-.nav .ico,.freeNav .ico{width:22px;height:22px}
-.lens{left:3px;top:3px;bottom:3px;width:calc((100% - 6px)/3)}
-.toast{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
-.overlay{max-height:var(--markt-visible-height)}
-.sheet{max-height:min(calc(var(--markt-visible-height) - 18px),780px)}
-.photo-help{display:flex!important;flex-direction:column;gap:8px;color:var(--muted);font-size:12px}
-.photo-pick{cursor:pointer;text-align:center}
-.photo-pick:has(+input:disabled){opacity:.45;cursor:default}
-@media(max-width:370px){.dock{gap:4px}.freeNav,.profileNav{flex-basis:43px;width:43px;height:52px}.nav{height:52px}.nav button{font-size:10px}.profileNav .bubble{width:34px;height:34px}}
-@media(max-height:350px){header.shell{min-height:44px;padding-block:4px}.navwrap{padding-top:3px;padding-bottom:calc(3px + env(safe-area-inset-bottom,0px))}.nav,.freeNav,.profileNav{height:45px}}
-
-
-/* MARKT 16: a bounded app grid; only the content row scrolls. */
-:root{--markt-app-height:100vh;--nav-row:58px}
-@supports(height:100svh){:root{--markt-app-height:100svh}}
-html{height:100%;overflow:hidden}
-body{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;height:var(--markt-app-height);max-height:none;min-height:0;width:100%;overflow:hidden;position:relative;margin:0;background:#151515}
-header.shell{grid-row:1;grid-column:1;position:relative;min-width:0;min-height:52px;z-index:15}
-main.shell{grid-row:2;grid-column:1;min-height:0;min-width:0;height:100%;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:18px}
-main.sheet-open{overflow:hidden}
-.navwrap{grid-row:3;grid-column:1;position:relative!important;inset:auto!important;z-index:35;min-width:0;min-height:0;display:flex!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;background:#171717;border-top:1px solid #ffffff19;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));justify-content:center;align-items:center}
-.dock{width:min(100%,560px);min-width:0;display:grid;grid-template-columns:minmax(42px,1fr) minmax(0,3.5fr) minmax(42px,1fr);gap:5px;align-items:stretch}
-.nav,.freeNav,.profileNav{height:var(--nav-row);min-height:0;min-width:0;width:100%;margin:0}
-.nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:3px}
-.freeNav,.profileNav{display:flex;align-items:center;justify-content:center;flex-direction:column}
-.nav button{height:100%;min-width:0;line-height:1.15;white-space:nowrap;font-size:11px;gap:4px}
-.freeNav small{font-size:11px}
-.profileNav .bubble{width:38px;height:38px;flex:none}
-.lens{left:3px;top:3px;bottom:3px;width:calc((100% - 6px)/3)}
-.overlay{position:absolute;inset:0;max-height:none}
-.sheet{max-height:min(calc(var(--markt-app-height) - 16px),780px)}
-.toast{bottom:calc(var(--nav-row) + 22px + env(safe-area-inset-bottom,0px))}
 header .brand{padding:0;text-align:left;justify-content:flex-start;cursor:pointer}
 .brandChevron{color:#9c9c9c;display:flex;align-items:center;flex:none}
 .brandChevron .ico{width:15px;height:15px}
@@ -424,15 +370,68 @@ header .brand{padding:0;text-align:left;justify-content:flex-start;cursor:pointe
 .challenge-copy{position:relative;z-index:2;max-width:58%;color:#fff;line-height:1.1;overflow-wrap:normal}
 .challenge-copy strong{display:block;font-size:clamp(17px,6.7cqw,42px);letter-spacing:-.035em;overflow-wrap:normal;font-weight:800}
 .challenge-art{position:absolute;z-index:1;right:0;top:0;height:100%;width:57%;object-fit:contain;object-position:right center;mask-image:linear-gradient(to right,transparent 0%,#000 23%);-webkit-mask-image:linear-gradient(to right,transparent 0%,#000 23%);pointer-events:none}
-@media(max-width:420px){
- :root{--nav-row:54px}
- .dock{grid-template-columns:44px minmax(0,1fr) 44px}
- .nav button{font-size:10px}
- .freeNav small{font-size:10px}
- header .brand{gap:4px}
- .brandChevron .ico{width:12px;height:12px}
- .profileNav .bubble{width:34px;height:34px}
- .avatarPick{font-size:13px}
+
+/* V17: document scrolling + fixed dock, independent of body/grid height. */
+:root{--dock-offset:0px;--dock-safe:0px;--dock-h:58px;}
+html{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+body{display:block;position:static;height:auto;max-height:none;min-height:100vh;overflow:visible;margin:0;background:#151515}
+header.shell{position:sticky;top:0;z-index:15;min-height:54px}
+main.shell{display:block;height:auto;max-height:none;min-height:0;overflow:visible;padding-bottom:calc(var(--dock-h) + 40px + var(--dock-offset) + var(--dock-safe));}
+body.sheet-open{overflow:hidden}
+.navwrap{
+  display:block!important;position:fixed!important;top:auto!important;left:0!important;right:0!important;
+  bottom:calc(var(--dock-offset) + var(--dock-safe))!important;
+  z-index:45!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;
+  height:auto!important;min-height:0!important;max-height:none!important;width:100%!important;
+  padding:6px 8px 8px!important;background:#171717;border-top:1px solid #383838;
+  transform:none!important;filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
 }
-@media(max-width:340px){.dock{gap:3px;grid-template-columns:40px minmax(0,1fr) 40px}.nav button{font-size:9px}.nav .ico,.freeNav .ico{width:19px;height:19px}.brandChevron{display:none}.profileNav .bubble{width:32px;height:32px}}
-@media(max-height:350px){:root{--nav-row:44px}header.shell{min-height:44px;padding-block:4px}.navwrap{padding-top:3px;padding-bottom:calc(3px + env(safe-area-inset-bottom,0px))}.nav .ico,.freeNav .ico{width:18px;height:18px}.profileNav .bubble{width:30px;height:30px}}
+.navwrap .dock{
+  display:flex!important;align-items:stretch;justify-content:center;gap:4px;
+  width:100%;max-width:560px;min-width:0;margin:0 auto;padding:0;
+  height:var(--dock-h);min-height:var(--dock-h);
+  transform:none;opacity:1;visibility:visible;
+}
+.navwrap .nav{
+  display:flex!important;flex:3 1 0;min-width:0;width:auto;height:100%;
+  margin:0;padding:0;gap:4px;overflow:visible;position:static;
+  background:transparent;border:0;box-shadow:none;
+}
+.navwrap .lens{display:none!important}
+.navwrap [data-page]{
+  display:flex!important;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;min-width:0;width:auto;height:100%;padding:3px 1px;margin:0;
+  background:#252525;color:#bcbcbc;border:1px solid #373737;box-shadow:none;
+  font:600 11px/1.15 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  white-space:nowrap;text-align:center;visibility:visible!important;opacity:1!important;
+  transform:none!important;filter:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+}
+.navwrap [data-page].active{background:#25384b;border-color:#4a91ce;color:var(--accent,#65b6ff)}
+.navwrap .freeNav.active{background:#3a311b;border-color:#a18a3f}
+.navwrap .nav button.active .ico{animation:none}
+.navwrap [data-page] small{font:inherit;color:inherit}
+.navwrap .ico{width:23px;height:23px;display:block}
+.navwrap [data-icon]{display:flex;align-items:center;justify-content:center}
+.navwrap .profileNav .bubble{width:26px;height:26px;font-size:15px;flex:none;border-width:1px}
+.navwrap .profileNav.active .bubble{border-color:#65b6ff}
+.overlay{position:fixed;inset:0;max-height:none;z-index:60}
+.sheet{max-height:85vh;max-height:85dvh}
+.toast{bottom:calc(var(--dock-h) + 26px + var(--dock-offset) + var(--dock-safe))}
+@media(max-width:420px){:root{--dock-h:56px}.navwrap [data-page]{font-size:10px}.navwrap .ico{width:21px;height:21px}.avatarPick{font-size:13px}header .brand{gap:4px}}
+@media(max-width:340px){.navwrap [data-page]{font-size:9px}.navwrap .dock,.navwrap .nav{gap:3px}.navwrap .ico{width:20px;height:20px}.brandChevron{display:none}}
+@media(max-height:350px){:root{--dock-h:46px}.navwrap [data-page]{gap:2px}.navwrap .ico{height:18px;width:18px}.navwrap .profileNav .bubble{height:20px;width:20px}}
+
+@supports(padding-bottom:env(safe-area-inset-bottom)){
+  :root{--dock-safe: min(32px, env(safe-area-inset-bottom,0px))}
+}
+
+.navwrap .nav,.navwrap .dock{
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  filter:none!important;isolation:auto!important;transform:none!important;
+}
+@supports(-webkit-touch-callout:none){
+  :root{--dock-safe:12px}
+  @supports(padding-bottom:env(safe-area-inset-bottom)){
+    :root{--dock-safe:max(12px,min(32px,env(safe-area-inset-bottom,0px)))}
+  }
+}
